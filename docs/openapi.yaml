@@ -1,0 +1,3539 @@
+openapi: 3.1.0
+info:
+  title: Sales Program Submission API
+  version: 0.1.0-design
+  description: Design contract based on ui-mockup. No backend is implemented. Only sufficiently clear operations
+    are in paths. Registration, submit, approve, reject, cancel and dashboard-summary remain provisional in API_DESIGN.md.
+    Technical recommendations and authorization policy dependencies are documented there; this is not a production
+    release.
+servers:
+- url: /api/v1
+  description: Relative API root; configure the deployment origin in the client.
+security:
+- bearerAuth: []
+tags:
+- name: Authentication
+- name: User/Profile
+- name: Program Submission
+- name: Backoffice
+- name: Master data
+paths:
+  /auth/login:
+    post:
+      operationId: login
+      tags:
+      - Authentication
+      summary: Authenticate an existing active account.
+      description: 'Allowed roles: Public. Email comparison is case-insensitive after trimming; never trim passwords.
+        Invalid email/password/disabled account use the same 401 response. Credentials are never logged. Lifetime
+        values are technical recommendations (A3).'
+      x-allowed-roles: Public
+      parameters: []
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                data:
+                  accessToken: example-access-token-not-a-real-credential
+                  tokenType: Bearer
+                  expiresIn: 900
+                  refreshToken: example-refresh-token-not-a-real-credential
+                  refreshExpiresAt: '2026-09-20T03:00:00Z'
+                  sessionId: ses_rizky
+                  user:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                    employeeNumber: B001
+                    email: rizky@example.com
+                    status: active
+                    roles:
+                    - submitter
+                    timeZone: Asia/Jakarta
+                    locationIds:
+                    - loc_bsd
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: rizky@example.com
+              password: example-password-for-documentation
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      tags:
+      - Authentication
+      summary: Rotate the refresh token and issue a new access token.
+      description: 'Allowed roles: Refresh-token holder. Validate the hashed token and session, rotate once, revoke
+        the family on reuse. This request uses the refresh credential, not an access bearer token. Serialize refresh
+        requests in the client; do not automatically retry on a lost response. Role changes and disabled accounts
+        take effect immediately.'
+      x-allowed-roles: Refresh-token holder
+      parameters: []
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                data:
+                  accessToken: example-new-access-token-not-a-real-credential
+                  tokenType: Bearer
+                  expiresIn: 900
+                  refreshToken: example-new-refresh-token-not-a-real-credential
+                  refreshExpiresAt: '2026-09-20T03:00:00Z'
+                  sessionId: ses_rizky
+                  user:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                    employeeNumber: B001
+                    email: rizky@example.com
+                    status: active
+                    roles:
+                    - submitter
+                    timeZone: Asia/Jakarta
+                    locationIds:
+                    - loc_bsd
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refreshToken: example-refresh-token-not-a-real-credential
+  /auth/logout:
+    post:
+      operationId: logoutSession
+      tags:
+      - Authentication
+      summary: Revoke the current refresh-token family and its access sessions.
+      description: 'Allowed roles: Refresh-token holder. No live access token required. Accept current or previously
+        rotated token from the family for revocation. Unknown, expired or already revoked tokens return the same
+        success; do not expose whether a token existed. Clear client credentials after attempting logout. Other
+        device sessions remain active.'
+      x-allowed-roles: Refresh-token holder
+      parameters: []
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+              example:
+                data:
+                  revoked: true
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refreshToken: example-refresh-token-not-a-real-credential
+  /users/me:
+    get:
+      operationId: getMyProfile
+      tags:
+      - User/Profile
+      summary: Load the signed-in profile for the header and auto-filled applicant section.
+      description: 'Allowed roles: Any active authenticated role. Only the caller profile. Job title, employee number,
+        roles and location scope are managed by trusted provisioning, never by the submission request. No self-service
+        profile editing is visible in the designs.'
+      x-allowed-roles: Any active authenticated role
+      parameters: []
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                data:
+                  id: usr_rizky
+                  fullName: Rizky Pratama
+                  jobTitle: Sales Executive
+                  employeeNumber: B001
+                  email: rizky@example.com
+                  status: active
+                  roles:
+                  - submitter
+                  timeZone: Asia/Jakarta
+                  locationIds:
+                  - loc_bsd
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /master-data/locations:
+    get:
+      operationId: listLocations
+      tags:
+      - Master data
+      summary: List locations the caller may select.
+      description: 'Allowed roles: Any active authenticated role. Return active authorized locations only; BSD and
+        Bekasi are seed examples, not a permanent enum. q searches code/name. Server applies organizational scope
+        before pagination.'
+      x-allowed-roles: Any active authenticated role
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: 1-based page.
+        example: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
+        example: 20
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+        description: Case-insensitive literal substring of location code/name.
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationListResponse'
+              example:
+                data:
+                - id: loc_bsd
+                  code: BSD
+                  name: BSD
+                  isActive: true
+                meta:
+                  requestId: req_01salesdesign
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+                  hasNextPage: false
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /master-data/program-types:
+    get:
+      operationId: listProgramTypes
+      tags:
+      - Master data
+      summary: List program types used by read-only filters.
+      description: 'Allowed roles: Any active authenticated role. Diskon and Bundling are observed values. This
+        endpoint does not settle who assigns a submission type (Q5); type is not writable in draft requests. Return
+        active types; old submissions retain snapshots of inactive types.'
+      x-allowed-roles: Any active authenticated role
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: 1-based page.
+        example: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
+        example: 20
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+        description: Case-insensitive literal substring of type code/name.
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgramTypeListResponse'
+              example:
+                data:
+                - id: typ_bundling
+                  code: bundling
+                  name: Bundling
+                  isActive: true
+                - id: typ_diskon
+                  code: diskon
+                  name: Diskon
+                  isActive: true
+                meta:
+                  requestId: req_01salesdesign
+                  page: 1
+                  pageSize: 20
+                  totalItems: 2
+                  totalPages: 1
+                  hasNextPage: false
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /program-submissions:
+    get:
+      operationId: listMySubmissions
+      tags:
+      - Program Submission
+      summary: List and search only submissions owned by the caller.
+      description: 'Allowed roles: submitter (owner). Ownership is server-derived and always applied before filters/counts.
+        No ownerId override. Read projections preserve null programType/estimatedCost until their source is defined.
+        Unknown or unauthorized filter IDs produce an empty list without disclosing them.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: 1-based page.
+        example: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
+        example: 20
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+        description: Trimmed, case-insensitive literal substring of program number or program name; no wildcard
+          syntax.
+        example: Bundling
+      - name: programNumber
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 64
+        description: Exact program number; combines with q using AND.
+        example: PRG-2026-0144
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionStatus'
+          uniqueItems: true
+          maxItems: 7
+        description: Repeat key for multiple statuses; OR within this filter.
+        style: form
+        explode: true
+      - name: locationId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 100
+        description: Repeat key; submission must match at least one selected location.
+        style: form
+        explode: true
+      - name: programTypeId
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Exact type ID; submissions with unknown type do not match.
+      - name: periodStartFrom
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Inclusive lower bound on execution periodStart; not submittedAt.
+      - name: periodStartTo
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - -createdAt
+          - createdAt
+          - -updatedAt
+          - updatedAt
+          - programNumber
+          default: -createdAt
+        description: Default -createdAt; append id ascending internally as a stable tie-breaker.
+        example: -createdAt
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionListResponse'
+              example:
+                data:
+                - id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling Idul Adha Outlet BSD
+                  programType: null
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost: null
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: draft
+                  currentStage: null
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-21T03:00:00Z'
+                  submittedAt: null
+                  version: 1
+                  myActiveTaskIds: []
+                meta:
+                  requestId: req_01salesdesign
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+                  hasNextPage: false
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+    post:
+      operationId: createDraft
+      tags:
+      - Program Submission
+      summary: Create a persisted draft, including an empty draft.
+      description: 'Allowed roles: submitter. All body fields optional; {} creates an empty draft with null scalars/empty
+        arrays. Owner, status, number, checker, cost, type and timestamps are server-owned. Allocate immutable opaque
+        ID and unique human number in one transaction. Validate provided references against confirmed eligibility;
+        never use the mockup PEOPLE array as authorization. Missing routing may leave checker null and submissionIssues
+        populated. See A1 and Q2/Q5.'
+      x-allowed-roles: submitter
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+        description: Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours.
+        example: sales-example-key-0001
+      responses:
+        '201':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+              example: '"1"'
+            Location:
+              schema:
+                type: string
+                format: uri-reference
+              description: Created resource metadata URI.
+              example: /api/v1/program-submissions/sub_0144
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+              example:
+                data:
+                  id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling Idul Adha Outlet BSD
+                  programType: null
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost: null
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: draft
+                  currentStage: null
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-21T03:00:00Z'
+                  submittedAt: null
+                  version: 1
+                  myActiveTaskIds: []
+                  reviewPlan:
+                    checker:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    acknowledgers:
+                    - id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    approvers:
+                    - id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                  reviewTasks: []
+                  attachments: []
+                  allowedActions:
+                  - update
+                  - uploadAttachment
+                  - downloadPdf
+                  submissionIssues:
+                  - field: null
+                    code: WORKFLOW_POLICY_UNRESOLVED
+                    message: Review policy must be confirmed before submission.
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '409':
+          $ref: '#/components/responses/409'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftCreate'
+            example:
+              programName: Bundling Idul Adha Outlet BSD
+              locationIds:
+              - loc_bsd
+              periodStart: '2026-09-06'
+              periodEnd: '2026-09-20'
+              acknowledgerIds:
+              - usr_dewi
+              approverIds:
+              - usr_ratna
+  /program-submissions/{submissionId}:
+    get:
+      operationId: getMySubmission
+      tags:
+      - Program Submission
+      summary: Read an owned draft or submission, progress and attachment metadata.
+      description: 'Allowed roles: submitter (owner). Return 404 for non-owned IDs. Review tasks include all stages
+        for the progress/signature display; task eligibility is computed on the backend. Response ETag is the quoted
+        parent version. Notes are owner-visible in this proposed contract (Q11).'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+              example: '"5"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+              example:
+                data:
+                  id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling September Outlet BSD
+                  programType: null
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost: null
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: pendingChecker
+                  currentStage: checker
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-21T03:10:00Z'
+                  submittedAt: '2026-08-21T03:10:00Z'
+                  version: 5
+                  myActiveTaskIds: []
+                  reviewPlan:
+                    checker:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    acknowledgers:
+                    - id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    approvers:
+                    - id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                  reviewTasks:
+                  - id: tsk_checker
+                    stage: checker
+                    reviewer:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    position: 1
+                    status: ready
+                    decidedAt: null
+                    note: null
+                  - id: tsk_know
+                    stage: acknowledgement
+                    reviewer:
+                      id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    position: 1
+                    status: waiting
+                    decidedAt: null
+                    note: null
+                  - id: tsk_approve
+                    stage: approval
+                    reviewer:
+                      id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                    position: 1
+                    status: waiting
+                    decidedAt: null
+                    note: null
+                  attachments:
+                  - id: att_proposal
+                    submissionId: sub_0144
+                    fileName: Proposal Program.pdf
+                    contentType: application/pdf
+                    sizeBytes: 1800000
+                    scanStatus: clean
+                    uploadedAt: '2026-08-21T03:06:00Z'
+                  allowedActions:
+                  - downloadPdf
+                  submissionIssues: []
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+    patch:
+      operationId: updateDraft
+      tags:
+      - Program Submission
+      summary: Partially update an owned draft.
+      description: 'Allowed roles: submitter (owner). Draft only; 409 SUBMISSION_LOCKED otherwise. Omitted fields
+        unchanged; null clears scalar fields; arrays replace the entire selection and [] clears it. A non-null name
+        must contain non-whitespace text. Provided dates must be real dates and start <= end when both present.
+        Body cannot set status, checker, number, owner, type, cost or tasks. Validate IDs and configured reviewer
+        limits. Atomic If-Match; increment version.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+        description: Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent
+          submission version.
+        example: '"1"'
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+              example: '"2"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+              example:
+                data:
+                  id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling September Outlet BSD
+                  programType: null
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost: null
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: draft
+                  currentStage: null
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-21T03:05:00Z'
+                  submittedAt: null
+                  version: 2
+                  myActiveTaskIds: []
+                  reviewPlan:
+                    checker:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    acknowledgers:
+                    - id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    approvers:
+                    - id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                  reviewTasks: []
+                  attachments: []
+                  allowedActions:
+                  - update
+                  - uploadAttachment
+                  - downloadPdf
+                  submissionIssues:
+                  - field: null
+                    code: WORKFLOW_POLICY_UNRESOLVED
+                    message: Review policy must be confirmed before submission.
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '412':
+          $ref: '#/components/responses/412'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '428':
+          $ref: '#/components/responses/428'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftUpdate'
+            example:
+              programName: Bundling September Outlet BSD
+  /program-submissions/{submissionId}/policy:
+    get:
+      operationId: getSubmissionPolicy
+      tags:
+      - Program Submission
+      summary: Load server-resolved checker, reviewer limits and upload constraints for this draft.
+      description: 'Allowed roles: submitter (owner). Read only; derives context from the persisted draft locations
+        and caller, so save locations before querying. Checker may be null when mapping is unresolved. routingConfigured
+        describes whether checker routing is configured, not whether all business-policy questions are settled.
+        It does not imply submit is allowed. Limits 2/3 reflect mockup defaults; configurable bounds 1..4/1..5.
+        No management endpoint is specified.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyResponse'
+              example:
+                data:
+                  policyVersion: policy_example_1
+                  checker:
+                    id: usr_andi
+                    fullName: Andi Setiawan
+                    jobTitle: Supervisor Sales
+                  minAcknowledgers: 1
+                  maxAcknowledgers: 2
+                  minApprovers: 1
+                  maxApprovers: 3
+                  allowedAttachmentExtensions:
+                  - .pdf
+                  - .xls
+                  - .xlsx
+                  maxAttachmentBytes: 10000000
+                  routingConfigured: true
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /program-submissions/{submissionId}/reviewer-options:
+    get:
+      operationId: listReviewerOptions
+      tags:
+      - Program Submission
+      summary: List eligible reviewers for the selected draft and stage.
+      description: 'Allowed roles: submitter (owner). Only acknowledgement/approval are selectable; checker is server-assigned.
+        Use authorized directory data, not arbitrary users. If the eligibility policy is unconfigured, return 409
+        REVIEWER_POLICY_UNRESOLVED; never expose an unrestricted directory. Active eligibility is rechecked on draft
+        writes and submit. Ordering is fullName then id.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: 1-based page.
+        example: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
+        example: 20
+      - name: stage
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - acknowledgement
+          - approval
+        description: Requested selectable stage.
+        example: acknowledgement
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+        description: Case-insensitive substring of fullName/jobTitle.
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewerListResponse'
+              example:
+                data:
+                - person:
+                    id: usr_dewi
+                    fullName: Dewi Larasati
+                    jobTitle: Branch Manager BSD
+                  eligibleStages:
+                  - acknowledgement
+                meta:
+                  requestId: req_01salesdesign
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+                  hasNextPage: false
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /program-submissions/{submissionId}/attachments:
+    post:
+      operationId: uploadAttachment
+      tags:
+      - Program Submission
+      summary: Upload one PDF/Excel attachment to an owned draft.
+      description: 'Allowed roles: submitter (owner). multipart/form-data with exactly one file part; no client
+        storage URL. Enforce <= 10,000,000 bytes (A4), extension, detected format and authorization before accepting.
+        Save quarantined attachment as pending, increment parent version and return 202. Scanner later marks clean/rejected
+        and increments parent version again; read metadata to poll. No download or submit while pending/rejected
+        files remain. Draft-only; atomically recheck version/status after streaming.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+        description: Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent
+          submission version.
+        example: '"2"'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+        description: Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours.
+        example: sales-example-key-0001
+      responses:
+        '202':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+              example: '"3"'
+            Location:
+              schema:
+                type: string
+                format: uri-reference
+              description: Created resource metadata URI.
+              example: /api/v1/program-submissions/sub_0144/attachments/att_proposal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+              example:
+                data:
+                  attachment:
+                    id: att_proposal
+                    submissionId: sub_0144
+                    fileName: Proposal Program.pdf
+                    contentType: application/pdf
+                    sizeBytes: 1800000
+                    scanStatus: pending
+                    uploadedAt: '2026-08-21T03:06:00Z'
+                  submissionVersion: 3
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '412':
+          $ref: '#/components/responses/412'
+        '413':
+          $ref: '#/components/responses/413'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '428':
+          $ref: '#/components/responses/428'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: One .pdf, .xls or .xlsx file; <=10,000,000 bytes.
+              required:
+              - file
+            encoding:
+              file:
+                contentType: application/pdf, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+  /program-submissions/{submissionId}/attachments/{attachmentId}:
+    get:
+      operationId: getMyAttachment
+      tags:
+      - Program Submission
+      summary: Read attachment metadata and scan status.
+      description: 'Allowed roles: submitter (owner). Authorize parent and verify attachment belongs to it; removed
+        attachments return 404. Does not expose object storage keys or scan internals. This metadata GET has no
+        ETag; fetch parent detail for its current version.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable attachmentId.
+        example: att_proposal
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentResponse'
+              example:
+                data:
+                  id: att_proposal
+                  submissionId: sub_0144
+                  fileName: Proposal Program.pdf
+                  contentType: application/pdf
+                  sizeBytes: 1800000
+                  scanStatus: clean
+                  uploadedAt: '2026-08-21T03:06:00Z'
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+    delete:
+      operationId: removeAttachment
+      tags:
+      - Program Submission
+      summary: Remove an attachment from an owned draft.
+      description: 'Allowed roles: submitter (owner). Draft only; remove the association and increment parent version
+        atomically. Blob cleanup follows retention policy. Exact retries with same idempotency key return original
+        result; a removed ID with a different key returns 404. Never remove historical submitted documents through
+        this operation.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable attachmentId.
+        example: att_proposal
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+        description: Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent
+          submission version.
+        example: '"3"'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+        description: Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours.
+        example: sales-example-key-0001
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+              example: '"4"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemovalResponse'
+              example:
+                data:
+                  attachmentId: att_proposal
+                  removed: true
+                  submissionVersion: 4
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '412':
+          $ref: '#/components/responses/412'
+        '428':
+          $ref: '#/components/responses/428'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /program-submissions/{submissionId}/attachments/{attachmentId}/content:
+    get:
+      operationId: downloadMyAttachment
+      tags:
+      - Program Submission
+      summary: Download an authorized, clean attachment.
+      description: 'Allowed roles: submitter (owner). Authorize parent on every request and ensure attachment membership.
+        Only clean files; pending/rejected => 409 ATTACHMENT_NOT_READY. Stream from private storage with sanitized
+        Content-Disposition: attachment and nosniff. No public or permanent URL.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable attachmentId.
+        example: att_proposal
+      responses:
+        '200':
+          description: Binary document.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="submission.pdf"
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.ms-excel:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /program-submissions/{submissionId}/pdf:
+    get:
+      operationId: downloadMySubmissionPdf
+      tags:
+      - Program Submission
+      summary: Render a printable submission form from a consistent saved snapshot.
+      description: 'Allowed roles: submitter (owner). PDF is an output recommendation (A5); mockup uses window.print().
+        Render saved fields, all selected reviewers and recorded decisions, marking draft/pending clearly. A visual
+        approval stamp is not a cryptographic signature. Do not embed attachment bytes. Authorize before rendering;
+        missing template configuration => 503.'
+      x-allowed-roles: submitter (owner)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      responses:
+        '200':
+          description: Binary document.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="submission.pdf"
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /backoffice/program-submissions/{submissionId}/attachments/{attachmentId}/content:
+    get:
+      operationId: downloadBackofficeAttachment
+      tags:
+      - Backoffice
+      summary: Download an authorized, clean attachment.
+      description: 'Allowed roles: checker / acknowledger / approver (current ready task assignee). Authorize parent
+        on every request and ensure attachment membership. Only clean files; pending/rejected => 409 ATTACHMENT_NOT_READY.
+        Stream from private storage with sanitized Content-Disposition: attachment and nosniff. No public or permanent
+        URL.'
+      x-allowed-roles: checker / acknowledger / approver (current ready task assignee)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable attachmentId.
+        example: att_proposal
+      responses:
+        '200':
+          description: Binary document.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="submission.pdf"
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.ms-excel:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /backoffice/program-submissions/{submissionId}/pdf:
+    get:
+      operationId: downloadBackofficeSubmissionPdf
+      tags:
+      - Backoffice
+      summary: Render a printable submission form from a consistent saved snapshot.
+      description: 'Allowed roles: checker / acknowledger / approver (current ready task assignee). PDF is an output
+        recommendation (A5); mockup uses window.print(). Render saved fields, all selected reviewers and recorded
+        decisions, marking draft/pending clearly. A visual approval stamp is not a cryptographic signature. Do not
+        embed attachment bytes. Authorize before rendering; missing template configuration => 503.'
+      x-allowed-roles: checker / acknowledger / approver (current ready task assignee)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      responses:
+        '200':
+          description: Binary document.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="submission.pdf"
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /backoffice/program-submissions:
+    get:
+      operationId: listBackofficeSubmissions
+      tags:
+      - Backoffice
+      summary: List submissions with a current ready review task assigned to the caller.
+      description: 'Allowed roles: checker / acknowledger / approver. Use EXISTS over ready tasks to avoid duplicate
+        submissions. Role alone is insufficient. Previous/future assignments and completed submissions do not enter
+        this inbox. backofficeAdmin alone confers no access; Q8 must settle broader visibility. Period filter explicitly
+        targets execution start date as a proposed convention (A2).'
+      x-allowed-roles: checker / acknowledger / approver
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: 1-based page.
+        example: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
+        example: 20
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+        description: Trimmed, case-insensitive literal substring of program number or program name; no wildcard
+          syntax.
+        example: Bundling
+      - name: programNumber
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 64
+        description: Exact program number; combines with q using AND.
+        example: PRG-2026-0144
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionStatus'
+          uniqueItems: true
+          maxItems: 7
+        description: Repeat key for multiple statuses; OR within this filter.
+        style: form
+        explode: true
+      - name: locationId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 100
+        description: Repeat key; submission must match at least one selected location.
+        style: form
+        explode: true
+      - name: programTypeId
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Exact type ID; submissions with unknown type do not match.
+      - name: periodStartFrom
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Inclusive lower bound on execution periodStart; not submittedAt.
+      - name: periodStartTo
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound.
+      - name: ownerId
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Exact submitter ID.
+      - name: checkerId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 100
+        description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
+          scope.
+        style: form
+        explode: true
+      - name: acknowledgerId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 100
+        description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
+          scope.
+        style: form
+        explode: true
+      - name: approverId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 100
+        description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
+          scope.
+        style: form
+        explode: true
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - -createdAt
+          - createdAt
+          - -updatedAt
+          - updatedAt
+          - programNumber
+          default: -createdAt
+        description: Default -createdAt; append id ascending internally as a stable tie-breaker.
+        example: -createdAt
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionListResponse'
+              example:
+                data:
+                - id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling September Outlet BSD
+                  programType: null
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost: null
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: pendingChecker
+                  currentStage: checker
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-21T03:10:00Z'
+                  submittedAt: '2026-08-21T03:10:00Z'
+                  version: 5
+                  myActiveTaskIds:
+                  - tsk_checker
+                meta:
+                  requestId: req_01salesdesign
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+                  hasNextPage: false
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /backoffice/program-submissions/{submissionId}:
+    get:
+      operationId: getBackofficeSubmission
+      tags:
+      - Backoffice
+      summary: Read submission details for a current task, including progress and decision targets.
+      description: 'Allowed roles: checker / acknowledger / approver (current ready task assignee). Enforce ready-task
+        assignment, not global admin status; 404 outside scope. myActiveTaskIds and ready tasks identify taskId
+        for the candidate decision endpoints. After acting, refresh the inbox; do not assume continued access to
+        the detail (Q8). This read contract can expose existing state while transition operations remain provisional.'
+      x-allowed-roles: checker / acknowledger / approver (current ready task assignee)
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+              example: '"5"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+              example:
+                data:
+                  id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling September Outlet BSD
+                  programType: null
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost: null
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: pendingChecker
+                  currentStage: checker
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-21T03:10:00Z'
+                  submittedAt: '2026-08-21T03:10:00Z'
+                  version: 5
+                  myActiveTaskIds:
+                  - tsk_checker
+                  reviewPlan:
+                    checker:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    acknowledgers:
+                    - id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    approvers:
+                    - id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                  reviewTasks:
+                  - id: tsk_checker
+                    stage: checker
+                    reviewer:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    position: 1
+                    status: ready
+                    decidedAt: null
+                    note: null
+                  - id: tsk_know
+                    stage: acknowledgement
+                    reviewer:
+                      id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    position: 1
+                    status: waiting
+                    decidedAt: null
+                    note: null
+                  - id: tsk_approve
+                    stage: approval
+                    reviewer:
+                      id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                    position: 1
+                    status: waiting
+                    decidedAt: null
+                    note: null
+                  attachments:
+                  - id: att_proposal
+                    submissionId: sub_0144
+                    fileName: Proposal Program.pdf
+                    contentType: application/pdf
+                    sizeBytes: 1800000
+                    scanStatus: clean
+                    uploadedAt: '2026-08-21T03:06:00Z'
+                  allowedActions:
+                  - approve
+                  - reject
+                  - downloadPdf
+                  submissionIssues: []
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+  /backoffice/filter-options/people:
+    get:
+      operationId: listBackofficeFilterPeople
+      tags:
+      - Backoffice
+      summary: Populate submitter and reviewer person filters without an unrestricted directory.
+      description: 'Allowed roles: checker / acknowledger / approver. Return distinct people referenced in submissions
+        in the caller current inbox, before optional filters. field selects owner/checker/acknowledger/approver.
+        Names and job title only; no email or employee number. Same role and assignment scope as inbox.'
+      x-allowed-roles: checker / acknowledger / approver
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: 1-based page.
+        example: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
+        example: 20
+      - name: field
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - owner
+          - checker
+          - acknowledger
+          - approver
+        description: Which relationship supplies people.
+        example: owner
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+        description: Case-insensitive substring of fullName/jobTitle.
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterPersonListResponse'
+              example:
+                data:
+                - id: usr_rizky
+                  fullName: Rizky Pratama
+                  jobTitle: Sales Executive
+                meta:
+                  requestId: req_01salesdesign
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+                  hasNextPage: false
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Opaque short-lived access token. Roles and object scope are enforced by server policy, not this
+        bearer declaration.
+  schemas:
+    Id:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{2,63}$
+      description: Opaque, immutable ID; clients must not parse its contents.
+    Role:
+      type: string
+      enum:
+      - submitter
+      - checker
+      - acknowledger
+      - approver
+      - backofficeAdmin
+    Stage:
+      type: string
+      enum:
+      - checker
+      - acknowledgement
+      - approval
+    SubmissionStatus:
+      type: string
+      enum:
+      - draft
+      - pendingChecker
+      - pendingAcknowledgement
+      - pendingApproval
+      - approved
+      - rejected
+      - cancelled
+    Meta:
+      type: object
+      additionalProperties: false
+      properties:
+        requestId:
+          type: string
+          minLength: 1
+      required:
+      - requestId
+    PageMeta:
+      type: object
+      additionalProperties: false
+      properties:
+        requestId:
+          type: string
+          minLength: 1
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+        hasNextPage:
+          type: boolean
+      required:
+      - requestId
+      - page
+      - pageSize
+      - totalItems
+      - totalPages
+      - hasNextPage
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              minLength: 1
+            message:
+              type: string
+              minLength: 1
+            details:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                properties:
+                  field:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                  code:
+                    type: string
+                  message:
+                    type: string
+                required:
+                - field
+                - code
+                - message
+          required:
+          - code
+          - message
+          - details
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - error
+      - meta
+    Person:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 150
+        jobTitle:
+          anyOf:
+          - type: string
+            maxLength: 150
+          - type: 'null'
+      required:
+      - id
+      - fullName
+      - jobTitle
+    User:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 150
+        employeeNumber:
+          type: string
+          minLength: 1
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        jobTitle:
+          anyOf:
+          - type: string
+            maxLength: 150
+          - type: 'null'
+        status:
+          type: string
+          enum:
+          - active
+          - disabled
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+          uniqueItems: true
+        timeZone:
+          type: string
+        locationIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+      required:
+      - id
+      - fullName
+      - employeeNumber
+      - email
+      - jobTitle
+      - status
+      - roles
+      - timeZone
+      - locationIds
+    Location:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+        name:
+          type: string
+        isActive:
+          type: boolean
+      required:
+      - id
+      - code
+      - name
+      - isActive
+    ProgramType:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+        name:
+          type: string
+        isActive:
+          type: boolean
+      required:
+      - id
+      - code
+      - name
+      - isActive
+    Money:
+      type: object
+      additionalProperties: false
+      properties:
+        currency:
+          type: string
+          enum:
+          - IDR
+        amount:
+          type: string
+          pattern: ^(0|[1-9][0-9]{0,13})(\.[0-9]{2})$
+          description: Decimal major units, never a floating point number; display formatting is client-side.
+      required:
+      - currency
+      - amount
+    ReviewPlan:
+      type: object
+      additionalProperties: false
+      properties:
+        checker:
+          anyOf:
+          - $ref: '#/components/schemas/Person'
+          - type: 'null'
+        acknowledgers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Person'
+        approvers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Person'
+      required:
+      - checker
+      - acknowledgers
+      - approvers
+    ReviewTask:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        stage:
+          $ref: '#/components/schemas/Stage'
+        reviewer:
+          $ref: '#/components/schemas/Person'
+        position:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+          - waiting
+          - ready
+          - approved
+          - rejected
+          - voided
+        decidedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+        note:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+      required:
+      - id
+      - stage
+      - reviewer
+      - position
+      - status
+      - decidedAt
+      - note
+    Attachment:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        submissionId:
+          $ref: '#/components/schemas/Id'
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        contentType:
+          type: string
+          enum:
+          - application/pdf
+          - application/vnd.ms-excel
+          - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        sizeBytes:
+          type: integer
+          minimum: 1
+          maximum: 10000000
+        scanStatus:
+          type: string
+          enum:
+          - pending
+          - clean
+          - rejected
+        uploadedAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - submissionId
+      - fileName
+      - contentType
+      - sizeBytes
+      - scanStatus
+      - uploadedAt
+    SubmissionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        programNumber:
+          type: string
+        programName:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+        programType:
+          anyOf:
+          - $ref: '#/components/schemas/ProgramType'
+          - type: 'null'
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Location'
+        periodStart:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+        periodEnd:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+        estimatedCost:
+          anyOf:
+          - $ref: '#/components/schemas/Money'
+          - type: 'null'
+        owner:
+          $ref: '#/components/schemas/Person'
+        status:
+          $ref: '#/components/schemas/SubmissionStatus'
+        currentStage:
+          anyOf:
+          - $ref: '#/components/schemas/Stage'
+          - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        submittedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+        version:
+          type: integer
+          minimum: 1
+        myActiveTaskIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+      required:
+      - id
+      - programNumber
+      - programName
+      - programType
+      - locations
+      - periodStart
+      - periodEnd
+      - estimatedCost
+      - owner
+      - status
+      - currentStage
+      - createdAt
+      - updatedAt
+      - submittedAt
+      - version
+      - myActiveTaskIds
+    Submission:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        programNumber:
+          type: string
+        programName:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+        programType:
+          anyOf:
+          - $ref: '#/components/schemas/ProgramType'
+          - type: 'null'
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Location'
+        periodStart:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+        periodEnd:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+        estimatedCost:
+          anyOf:
+          - $ref: '#/components/schemas/Money'
+          - type: 'null'
+        owner:
+          $ref: '#/components/schemas/Person'
+        status:
+          $ref: '#/components/schemas/SubmissionStatus'
+        currentStage:
+          anyOf:
+          - $ref: '#/components/schemas/Stage'
+          - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        submittedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+        version:
+          type: integer
+          minimum: 1
+        myActiveTaskIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+        reviewPlan:
+          $ref: '#/components/schemas/ReviewPlan'
+        reviewTasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewTask'
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        allowedActions:
+          type: array
+          items:
+            type: string
+            enum:
+            - update
+            - uploadAttachment
+            - removeAttachment
+            - submit
+            - approve
+            - reject
+            - cancel
+            - downloadPdf
+          uniqueItems: true
+        submissionIssues:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              field:
+                anyOf:
+                - type: string
+                - type: 'null'
+              code:
+                type: string
+              message:
+                type: string
+            required:
+            - field
+            - code
+            - message
+      required:
+      - id
+      - programNumber
+      - programName
+      - programType
+      - locations
+      - periodStart
+      - periodEnd
+      - estimatedCost
+      - owner
+      - status
+      - currentStage
+      - createdAt
+      - updatedAt
+      - submittedAt
+      - version
+      - myActiveTaskIds
+      - reviewPlan
+      - reviewTasks
+      - attachments
+      - allowedActions
+      - submissionIssues
+    DraftCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        programName:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 200
+          - type: 'null'
+        locationIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 100
+        periodStart:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+        periodEnd:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+        acknowledgerIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 4
+        approverIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 5
+      required: []
+    DraftUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        programName:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 200
+          - type: 'null'
+        locationIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 100
+        periodStart:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+        periodEnd:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+        acknowledgerIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 4
+        approverIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          uniqueItems: true
+          maxItems: 5
+      required: []
+      minProperties: 1
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+      - email
+      - password
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        refreshToken:
+          type: string
+          minLength: 32
+          maxLength: 2048
+      required:
+      - refreshToken
+    Session:
+      type: object
+      additionalProperties: false
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          enum:
+          - Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+        refreshToken:
+          type: string
+        refreshExpiresAt:
+          type: string
+          format: date-time
+        sessionId:
+          $ref: '#/components/schemas/Id'
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - accessToken
+      - tokenType
+      - expiresIn
+      - refreshToken
+      - refreshExpiresAt
+      - sessionId
+      - user
+    LogoutResult:
+      type: object
+      additionalProperties: false
+      properties:
+        revoked:
+          const: true
+          type: boolean
+      required:
+      - revoked
+    AttachmentRemoval:
+      type: object
+      additionalProperties: false
+      properties:
+        attachmentId:
+          $ref: '#/components/schemas/Id'
+        removed:
+          const: true
+          type: boolean
+        submissionVersion:
+          type: integer
+          minimum: 1
+      required:
+      - attachmentId
+      - removed
+      - submissionVersion
+    UploadResult:
+      type: object
+      additionalProperties: false
+      properties:
+        attachment:
+          $ref: '#/components/schemas/Attachment'
+        submissionVersion:
+          type: integer
+          minimum: 1
+      required:
+      - attachment
+      - submissionVersion
+    ReviewerOption:
+      type: object
+      additionalProperties: false
+      properties:
+        person:
+          $ref: '#/components/schemas/Person'
+        eligibleStages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stage'
+          uniqueItems: true
+      required:
+      - person
+      - eligibleStages
+    SubmissionPolicy:
+      type: object
+      additionalProperties: false
+      properties:
+        policyVersion:
+          type: string
+        checker:
+          anyOf:
+          - $ref: '#/components/schemas/Person'
+          - type: 'null'
+        minAcknowledgers:
+          const: 1
+          type: integer
+        maxAcknowledgers:
+          type: integer
+          minimum: 1
+          maximum: 4
+        minApprovers:
+          const: 1
+          type: integer
+        maxApprovers:
+          type: integer
+          minimum: 1
+          maximum: 5
+        allowedAttachmentExtensions:
+          type: array
+          items:
+            type: string
+            enum:
+            - .pdf
+            - .xls
+            - .xlsx
+          uniqueItems: true
+        maxAttachmentBytes:
+          const: 10000000
+          type: integer
+        routingConfigured:
+          type: boolean
+      required:
+      - policyVersion
+      - checker
+      - minAcknowledgers
+      - maxAcknowledgers
+      - minApprovers
+      - maxApprovers
+      - allowedAttachmentExtensions
+      - maxAttachmentBytes
+      - routingConfigured
+    FilterPerson:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        fullName:
+          type: string
+        jobTitle:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - id
+      - fullName
+      - jobTitle
+    RegistrationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 150
+        employeeNumber:
+          type: string
+          minLength: 1
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 15
+          maxLength: 128
+      required:
+      - fullName
+      - employeeNumber
+      - email
+      - password
+    RegistrationReceipt:
+      type: object
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+      required:
+      - message
+    DecisionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        note:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+      required: []
+    EmptyRequest:
+      type: object
+      additionalProperties: false
+      properties: {}
+      required: []
+    CancelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required:
+      - reason
+    Dashboard:
+      type: object
+      additionalProperties: false
+      properties:
+        scope:
+          type: string
+          enum:
+          - myActiveTasks
+        generatedAt:
+          type: string
+          format: date-time
+        totalSubmissions:
+          type: integer
+          minimum: 0
+        byStage:
+          type: object
+          additionalProperties: false
+          properties:
+            checker:
+              type: integer
+              minimum: 0
+            acknowledgement:
+              type: integer
+              minimum: 0
+            approval:
+              type: integer
+              minimum: 0
+          required:
+          - checker
+          - acknowledgement
+          - approval
+      required:
+      - scope
+      - generatedAt
+      - totalSubmissions
+      - byStage
+    SessionResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/Session'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    UserResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    LogoutResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/LogoutResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SubmissionResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/Submission'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SubmissionListResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionSummary'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      required:
+      - data
+      - meta
+    LocationListResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Location'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      required:
+      - data
+      - meta
+    ProgramTypeListResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgramType'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      required:
+      - data
+      - meta
+    ReviewerListResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewerOption'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      required:
+      - data
+      - meta
+    PolicyResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/SubmissionPolicy'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    AttachmentResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/Attachment'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    UploadResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/UploadResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    RemovalResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/AttachmentRemoval'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    FilterPersonListResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FilterPerson'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      required:
+      - data
+      - meta
+    RegistrationResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/RegistrationReceipt'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    DashboardResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/Dashboard'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+  responses:
+    '400':
+      description: Malformed JSON, unknown parameters, invalid query encoding or missing Idempotency-Key.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Malformed JSON, unknown parameters, invalid query encoding or missing Idempotency-Key.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '401':
+      description: Credentials or session are invalid or expired.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+        WWW-Authenticate:
+          schema:
+            type: string
+          description: Bearer challenge; never includes credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHENTICATED
+              message: Credentials or session are invalid or expired.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '403':
+      description: The authenticated user lacks the required role.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: FORBIDDEN
+              message: The authenticated user lacks the required role.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '404':
+      description: Resource does not exist or is outside your authorized scope.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Resource does not exist or is outside your authorized scope.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '409':
+      description: The operation conflicts with the current resource state.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: CONFLICT
+              message: The operation conflicts with the current resource state.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '412':
+      description: The submission changed. Fetch its current version and retry deliberately.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VERSION_CONFLICT
+              message: The submission changed. Fetch its current version and retry deliberately.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '413':
+      description: The file or request exceeds the allowed size.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: PAYLOAD_TOO_LARGE
+              message: The file or request exceeds the allowed size.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '415':
+      description: The request or file media type is unsupported.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNSUPPORTED_MEDIA_TYPE
+              message: The request or file media type is unsupported.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '422':
+      description: One or more fields violate validation rules.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VALIDATION_FAILED
+              message: One or more fields violate validation rules.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '428':
+      description: If-Match is required.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: PRECONDITION_REQUIRED
+              message: If-Match is required.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '429':
+      description: Too many requests. Retry after the indicated delay.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+          description: Delay in seconds.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many requests. Retry after the indicated delay.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '500':
+      description: An unexpected error occurred.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: An unexpected error occurred.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+    '503':
+      description: A required service is temporarily unavailable.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Correlation ID also returned in meta.requestId.
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+          description: Delay in seconds.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: SERVICE_UNAVAILABLE
+              message: A required service is temporarily unavailable.
+              details: []
+            meta:
+              requestId: req_01salesdesign
+x-provisional-operations:
+- method: POST
+  path: /auth/register
+  blockedBy: Q1
+- method: POST
+  path: /program-submissions/{submissionId}/submit
+  blockedBy: Q2, Q3, Q4, Q5, Q6
+- method: POST
+  path: /program-submissions/{submissionId}/cancel
+  blockedBy: Q7
+- method: POST
+  path: /backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/approve
+  blockedBy: Q3, Q4
+- method: POST
+  path: /backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/reject
+  blockedBy: Q3, Q4
+- method: GET
+  path: /backoffice/dashboard-summary
+  blockedBy: Q9

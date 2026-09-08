@@ -1,0 +1,54 @@
+name: Foundation checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure local test services
+        run: cp .env.example .env
+      - name: Build backend
+        run: docker compose build backend
+      - name: Start MySQL
+        run: docker compose up -d --wait mysql
+      - name: Check settings and migrations
+        run: |
+          docker compose run --rm backend python manage.py check
+          docker compose run --rm backend python manage.py makemigrations --check --dry-run
+          docker compose run --rm backend python manage.py migrate --noinput
+      - name: Test against MySQL
+        run: docker compose run --rm backend python manage.py test --keepdb
+      - name: Check live service
+        run: |
+          docker compose up -d --wait backend
+          curl --fail http://localhost:8000/api/v1/health/ready
+      - name: Stop services
+        if: always()
+        run: docker compose down
+
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.3'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: dart format --output=none --set-exit-if-changed lib test tool
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build web --dart-define=API_BASE_URL=https://api.example.com/api/v1
