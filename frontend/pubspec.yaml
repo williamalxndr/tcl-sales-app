@@ -14,6 +14,7 @@ dependencies:
   flutter_riverpod: ^3.3.2
   # 17.5.0 is the newest line compatible with the repository's Dart 3.10 SDK.
   go_router: ^17.5.0
+  flutter_secure_storage: ^10.0.0
   http: ^1.6.0
   cupertino_icons: ^1.0.8
 

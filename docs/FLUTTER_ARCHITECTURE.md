@@ -14,7 +14,7 @@ The Flutter client will be one responsive application for Android, iOS, web, Win
 | Navigation | `go_router` | URL-based routes, deep links, browser history, redirects, nested authenticated shells, and an explicit unknown-route state are needed across all supported targets. |
 | API boundary | Typed feature repositories over one `ApiClient` | Repositories own DTO mapping, session reconciliation, ETags, idempotency keys, paging, and feature cache rules. Widgets receive state/actions, never raw HTTP responses. |
 | DTO approach | Hand-written immutable Dart value objects in the first feature PR | The OpenAPI document is the contract. Start without generated code so the first auth slice stays small; revisit generation only after DTO count/repetition makes it worthwhile. |
-| Native/desktop refresh credential | A future `SecureSessionStore` adapter backed by `flutter_secure_storage` | Refresh credentials must use OS-backed storage. The adapter keeps plugin/platform details outside auth state/repositories. |
+| Native/desktop refresh credential | `SessionStore` adapter backed by `flutter_secure_storage` | Refresh credentials use OS-backed storage. The adapter keeps plugin/platform details outside auth state/repositories. |
 | Web refresh credential | Backend-managed `HttpOnly` `sales_refresh` cookie only | Flutter web must not store refresh credentials in LocalStorage, including via a secure-storage plugin. It bootstraps CSRF, keeps access token in memory, and calls refresh/logout with credentials. |
 | User-facing language | Indonesian | API codes remain stable English identifiers; UI maps them to concise Indonesian messages. |
 
@@ -46,17 +46,17 @@ lib/
     config/                    Public runtime configuration
     di/                        Root providers and dependency wiring
     network/                   HTTP client, envelopes, API errors
-    session/                   Session/store abstractions (next milestone)
+    session/                   Session/store abstractions and native secure store
     design_system/             Shared UI only after reuse is real
   features/
-    auth/                      Login/session/profile (next milestone)
+    authentication/            Login, session restoration, logout and profile identity
     submissions/               Proposer flow (later)
     backoffice/                Reviewer flow/history (later)
     master_data/               Locations/types/reviewer options (later)
     service_status/            Existing development availability shell
 ```
 
-The current router contains only the existing service-status route. Authentication will replace it with a startup state, `/login`, and guarded authenticated destinations. This keeps today’s verified shell working while avoiding a fake login screen or premature route guards.
+The router has a startup state, `/login`, guarded authenticated destinations, and an intentional unknown-route view. Authentication redirects are driven by the session provider; future feature routes add resource-level role checks from backend data.
 
 ## HTTP and state rules
 
@@ -69,7 +69,7 @@ The current router contains only the existing service-status route. Authenticati
 
 ## Secure storage and platform notes
 
-The native session implementation will add `flutter_secure_storage` when it is first used. Before then, avoid adding platform configuration that has no executable consumer.
+`flutter_secure_storage` is used only by native/desktop session storage. The browser implementation is deliberately a no-op because the backend owns its refresh credential in an HttpOnly cookie.
 
 - Android: the package currently requires Android API 23 or newer and recommends disabling automatic backup for encrypted storage. Confirm the project’s Android support policy before changing minimum SDK or backup behavior.
 - iOS/macOS: configure Keychain Sharing only when the adapter is added and validate with the selected signing team.
@@ -83,3 +83,16 @@ The native session implementation will add `flutter_secure_storage` when it is f
 - Existing service-status behavior remains testable through an overridden API provider.
 - Authentication can add its repository/session store/routes without changing widget construction across the app.
 - `flutter analyze`, widget tests, and web compilation remain green after dependencies are resolved.
+
+## Authentication implementation
+
+Authentication now provides an end-to-end Flutter slice:
+
+- `ApiClient` supports GET, POST, PUT, PATCH and DELETE JSON envelopes, query parameters, structured API error details, `ETag`, `If-Match`, and `Idempotency-Key` headers.
+- It attaches the in-memory Bearer token, serializes an expired-token refresh, and retries the original protected request at most once.
+- `AuthRepository` calls CSRF bootstrap/login/refresh/logout and maps the backend session response to typed `AuthSession` and `UserProfile` values.
+- Native and desktop refresh tokens are persisted in `flutter_secure_storage`; Flutter web enables credentialed browser requests and keeps the refresh token in the backend-set HttpOnly cookie.
+- `AuthController` restores a session at launch, provides login/logout state, and changes guarded routes between the loading, login, and authenticated shell states.
+- The responsive Login page follows the supplied design’s visual language and intentionally omits registration because accounts are provisioned by the organization.
+
+The secure-store adapter needs platform release verification before distribution: Android’s encrypted-storage backup policy, Apple signing/keychain settings, Windows ATL, and Linux Secret Service/libsecret remain release checklist items.

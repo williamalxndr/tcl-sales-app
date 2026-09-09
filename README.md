@@ -2,7 +2,7 @@
 
 Flutter for Android, iOS, web, Windows, macOS and Linux; Django REST Framework for the API; MySQL 8.4 for storage.
 
-The DRF/MySQL backend now implements login, drafts, sequential approvals, rejection, private uploads, signed PDFs and completed-review history. The Flutter launch screen remains the existing service-status shell. Follow [backend setup and employee provisioning](docs/BACKEND.md); cancellation remains gated until its allowed states are confirmed.
+The DRF/MySQL backend implements login, drafts, sequential approvals, rejection, private uploads, signed PDFs and completed-review history. Flutter now implements responsive Login, session restoration/refresh, logout, guarded routes, and an authenticated identity shell. Follow [backend setup and employee provisioning](docs/BACKEND.md); cancellation remains gated until its allowed states are confirmed.
 
 ## Repository
 
@@ -52,7 +52,7 @@ flutter pub get
 flutter run -d chrome --web-port=3000 --dart-define=API_BASE_URL=http://localhost:8000/api/v1
 ```
 
-The screen should show **Service connected**. Health endpoints:
+The app first presents **Masuk**. Use an employee provisioned through the backend command to authenticate; the authenticated shell then confirms the service connection. Health endpoints:
 
 ```sh
 curl http://localhost:8000/api/v1/health/live

@@ -15,11 +15,11 @@ flowchart LR
     Worker --> ClamAV[Private ClamAV daemon]
 ```
 
-Flutter has a Riverpod composition root and GoRouter-owned initial route around its existing six-platform service-status shell. Authentication, Program Submission, and Backoffice client features are the next milestones. Business backend operations are implemented, with their full contract in [openapi.yaml](openapi.yaml). [API_DESIGN.md](API_DESIGN.md) explains the business rules and unresolved decisions; [BACKEND.md](BACKEND.md) explains running and provisioning the implementation; [FLUTTER_ARCHITECTURE.md](FLUTTER_ARCHITECTURE.md) records the client architecture decision.
+Flutter has a Riverpod composition root, GoRouter session guard, responsive Login, secure native session storage, web CSRF/cookie sessions, logout, and an authenticated identity shell. Program Submission and Backoffice client features remain the next milestones. Business backend operations are implemented, with their full contract in [openapi.yaml](openapi.yaml). [API_DESIGN.md](API_DESIGN.md) explains the business rules and unresolved decisions; [BACKEND.md](BACKEND.md) explains running and provisioning the implementation; [FLUTTER_ARCHITECTURE.md](FLUTTER_ARCHITECTURE.md) records the client architecture decision.
 
 | Layer | Responsibility |
 | --- | --- |
-| `frontend/lib/app`, `frontend/lib/core`, `frontend/lib/features` | Riverpod application composition/dependencies, GoRouter routes, shared platform-neutral services, and feature-owned client code; authentication session/provider work follows this foundation |
+| `frontend/lib/app`, `frontend/lib/core`, `frontend/lib/features` | Riverpod application composition/dependencies, GoRouter routes/session guard, shared platform-neutral services, and feature-owned client code including Login/session/identity shell |
 | `apps/accounts` | Custom employee user, explicit role grants, fixed Checker, assigned locations, versioned signatures; opaque Bearer session authentication, native/web refresh transport, trusted account provisioning |
 | `apps/core` | Request IDs, success/error envelopes, strict request fields, audit records, MySQL rate counters, idempotency replay, optimistic version checks and health |
 | `apps/programs/models.py` | Master records, explicit reviewer eligibility, policy, drafts, tasks, attachments and numbering counter |
@@ -38,7 +38,7 @@ Use typed camelCase DTOs, exact IDR strings, date-only execution values and UTC 
 
 Current authenticated scope includes pre-provisioned login/profile; authorized master data and reviewer options; own drafts/list/detail/PATCH/submit; reviewer inbox/history/detail/approve/reject; optional quarantined uploads, private downloads and signed PDFs. Cancellation is implemented but its initial source-state allowlist is empty pending the user’s answer. Type/cost can be supplied now; submitting without them awaits requiredness configuration. No broad Backoffice-admin bypass exists.
 
-Deferred: Flutter business screens/integration beyond the initial app composition, public signup, future superadmin account-management UI/API, recovery/profile editing, signature replacement UI, approval delegation/revision/reassignment, dashboard/report metrics, approved file/audit retention and deployment infrastructure.
+Deferred: Flutter Program Submission and Backoffice screens/integration, public signup, future superadmin account-management UI/API, recovery/profile editing, signature replacement UI, approval delegation/revision/reassignment, dashboard/report metrics, approved file/audit retention and deployment infrastructure.
 
 MySQL is required in development and tests (InnoDB, utf8mb4, strict mode, READ COMMITTED); no SQLite fallback. Migrations are committed and applied explicitly. Default initialization grants the application access to `sales` and the isolated `test_sales` database. Production should use distinct migration/runtime permissions and an approved deployment process.
 

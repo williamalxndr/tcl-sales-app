@@ -40,7 +40,9 @@ void main() {
             'error': {
               'code': 'SERVICE_UNAVAILABLE',
               'message': 'Unavailable.',
-              'details': [],
+              'details': [
+                {'field': 'name', 'code': 'REQUIRED', 'message': 'Required.'},
+              ],
             },
             'meta': {'requestId': 'req_failure'},
           }),
@@ -59,6 +61,41 @@ void main() {
       ),
     );
   });
+
+  test(
+    'sends mutation concurrency headers and exposes response ETag',
+    () async {
+      final api = ApiClient(
+        baseUrl: baseUrl,
+        client: MockClient((request) async {
+          expect(request.method, 'PATCH');
+          expect(request.url.toString(), contains('page=2'));
+          expect(request.headers['idempotency-key'], 'idem-001');
+          expect(request.headers['if-match'], '"v3"');
+          expect(jsonDecode(request.body), {'programName': 'Program baru'});
+          return http.Response(
+            jsonEncode({
+              'data': {'id': 'prg_001'},
+              'meta': {'requestId': 'req_patch'},
+            }),
+            200,
+            headers: {'etag': '"v4"'},
+          );
+        }),
+      );
+      addTearDown(api.close);
+
+      final response = await api.request(
+        'PATCH',
+        'program-submissions/prg_001',
+        body: {'programName': 'Program baru'},
+        query: {'page': '2'},
+        idempotencyKey: 'idem-001',
+        ifMatch: '"v3"',
+      );
+      expect(response.eTag, '"v4"');
+    },
+  );
 
   test('HTML error pages become a safe client error', () async {
     final api = ApiClient(

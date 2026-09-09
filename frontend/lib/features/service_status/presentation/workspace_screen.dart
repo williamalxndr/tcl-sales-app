@@ -24,7 +24,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('PT Total Chemindo Loka')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

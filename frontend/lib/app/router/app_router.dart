@@ -3,18 +3,43 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/di/providers.dart';
+import '../../features/authentication/application/auth_controller.dart';
+import '../../features/authentication/presentation/auth_loading_screen.dart';
+import '../../features/authentication/presentation/authenticated_shell.dart';
+import '../../features/authentication/presentation/login_screen.dart';
 import '../../features/service_status/presentation/workspace_screen.dart';
 
-/// Route ownership lives above individual features. Authentication redirects and
-/// role-aware destinations will be introduced with the session feature.
+const _loginPath = '/login';
+const _loadingPath = '/loading';
+
+/// Routes redirect only from session state. Feature pages retain responsibility
+/// for their own resource-level role checks when they are added.
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final refresh = ref.watch(authRouterRefreshProvider);
   final router = GoRouter(
+    refreshListenable: refresh,
+    redirect: (context, state) {
+      final auth = refresh.value;
+      final path = state.uri.path;
+      if (auth.status == AuthStatus.restoring) {
+        return path == _loadingPath ? null : _loadingPath;
+      }
+      if (auth.status == AuthStatus.unauthenticated) {
+        return path == _loginPath ? null : _loginPath;
+      }
+      if (path == _loginPath || path == _loadingPath) return '/';
+      return null;
+    },
     routes: [
+      GoRoute(path: _loadingPath, builder: (_, _) => const AuthLoadingScreen()),
+      GoRoute(path: _loginPath, builder: (_, _) => const LoginScreen()),
       GoRoute(
         path: '/',
         builder: (context, state) {
-          return WorkspaceScreen(
-            repository: ref.read(serviceStatusRepositoryProvider),
+          return AuthenticatedShell(
+            child: WorkspaceScreen(
+              repository: ref.read(serviceStatusRepositoryProvider),
+            ),
           );
         },
       ),
@@ -32,4 +57,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
   ref.onDispose(router.dispose);
   return router;
+});
+
+final authRouterRefreshProvider = Provider<ValueNotifier<AuthState>>((ref) {
+  final notifier = ValueNotifier(ref.read(authControllerProvider));
+  ref.listen<AuthState>(
+    authControllerProvider,
+    (_, next) => notifier.value = next,
+  );
+  ref.onDispose(notifier.dispose);
+  return notifier;
 });
