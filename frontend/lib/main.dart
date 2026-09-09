@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'core/config/app_config.dart';
-import 'core/network/api_client.dart';
-import 'features/service_status/data/service_status_repository.dart';
+import 'core/di/providers.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   final config = AppConfig.fromEnvironment();
-  final api = ApiClient(baseUrl: config.apiBaseUrl);
-  runApp(SalesApp(repository: ServiceStatusRepository(api)));
+  runApp(
+    ProviderScope(
+      overrides: [appConfigProvider.overrideWithValue(config)],
+      child: const SalesApp(),
+    ),
+  );
 }

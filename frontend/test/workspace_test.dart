@@ -1,12 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sales_app/app.dart';
+import 'package:sales_app/core/di/providers.dart';
 import 'package:sales_app/core/network/api_client.dart';
-import 'package:sales_app/features/service_status/data/service_status_repository.dart';
 
 void main() {
   testWidgets(
@@ -33,7 +34,10 @@ void main() {
       );
       addTearDown(api.close);
       await tester.pumpWidget(
-        SalesApp(repository: ServiceStatusRepository(api)),
+        ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: const SalesApp(),
+        ),
       );
       await tester.pumpAndSettle();
       expect(find.text('Try again'), findsOneWidget);

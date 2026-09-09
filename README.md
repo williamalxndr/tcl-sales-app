@@ -22,6 +22,7 @@ docs/openapi.yaml         All 30 implemented API operations
 docs/foundation.openapi.yaml  Compatible health-only API subset
 docs/ARCHITECTURE.md      Boundaries, decisions and implementation status
 docs/BACKEND.md           Setup, provisioning, policy and scanner operation
+docs/FLUTTER_ARCHITECTURE.md  Flutter application architecture decision
 .github/workflows/ci.yml  Backend/MySQL and Flutter checks
 ```
 
