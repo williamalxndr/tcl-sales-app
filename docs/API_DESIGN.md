@@ -1,231 +1,173 @@
 # Sales Program Submission API Design
 
-Status: **design draft for review**, 2026-09-08. Stack confirmed: Flutter (Android, iOS, web, Windows, macOS, Linux), Django REST Framework, and MySQL. The repository now contains a development foundation; the business endpoints in this document are not implemented. See [architecture and implementation status](ARCHITECTURE.md) and [runtime foundation contract](foundation.openapi.yaml).
+Status: **implemented development backend**, contract revision 0.3.0, 2026-09-09. Stack: Flutter across supported mobile/web/desktop targets, Django REST Framework, MySQL 8.4. This backend phase leaves Flutter unchanged. The complete executable contract is [openapi.yaml](openapi.yaml); local startup, account provisioning and verification are in [BACKEND.md](BACKEND.md). Cancellation is implemented behind an unconfigured policy gate, not silently enabled.
 
-## 1. Evidence, scope and confidence
+## Evidence and confirmed scope
 
-At the initial design review, the supplied workspace contained `ui-mockup/`, an empty `repo/`, and an initially empty `docs/`, with no application code or framework. Subsequently `repo/` became the Git repository and the user selected Flutter + DRF + MySQL. This document preserves the initial design evidence; current implementation status is in ARCHITECTURE.md. The original HTML designs remain in the parent workspace’s `ui-mockup/`.
+The original workspace supplied `ui-mockup/Authentication.dc.html`, `Pengajuan Program.dc.html`, `Backoffice.dc.html`, all six annotated `uploads/draw-*.png` images, `support.js`, `image-slot.js`, and thumbnail metadata. The HTML/script flows and annotations established login, draft editing, fixed Checker, selectable Mengetahui/Menyetujui, a current-turn inbox, filters, optional review notes and printable detail. The mockups’ hardcoded identities, dates, role labels and contradictory inbox data are examples rather than business rules. The original files remain in the parent workspace at `../../ui-mockup/`.
 
-Reviewed inputs:
+User decisions supersede the mockup: login only with pre-created employee accounts; future superadmin account management; a persisted employee-to-Checker relation; proposer-entered type/cost with IDR shown as Rp; optional Excel/PDF attachments; proposer-only cancellation; separate completed assignment history; all review notes visible to authorized participants. The subsequent answers explicitly confirm **every person approves sequentially, any rejection ends the submission, and signatures are provisioned images snapshotted on submit/approve**. Dashboard metrics were not selected and remain deferred.
 
-| Input | Observed requirements |
+## Business domain and actors
+
+PT Total Chemindo Loka employees propose Sales & Marketing programs for one or more execution locations and dates. Bundling/Diskon and BSD/Bekasi are observed master-data examples. The established domain is program approval; customer CRM, orders, invoicing and budget execution are not included.
+
+| Actor / role | Access |
 | --- | --- |
-| `../../ui-mockup/Authentication.dc.html` (form and Component script) | Masuk/Daftar, email/password, registration name and employee number, password visibility toggle. Buttons have no authentication implementation. |
-| `../../ui-mockup/Pengajuan Program.dc.html` (all markup and Component script) | Own list/search, draft editor, locations, dates, attachments, fixed Checker, selectable Mengetahui/Menyetujui, submit confirmation, progress, printable detail. |
-| `../../ui-mockup/Backoffice.dc.html` (all markup and Component script) | Current-turn inbox, program/person/type/location/date filters, detail, approve/reject confirmation, optional note, immutable decision presentation. |
-| All six `../../ui-mockup/uploads/draw-*.png` images | Annotated Backoffice filter layout/scrolling variations; an older image includes Dashboard/Master Data/Laporan navigation but no respective flows. No additional business fields. |
-| `../../ui-mockup/support.js`, `../../ui-mockup/image-slot.js`, `.thumbnail` | Mockup runtime, presentation asset support and thumbnail metadata; not application services. Image-slot uploading is a design tool feature, not a company-logo management requirement. |
+| Public | CSRF bootstrap, email/password login, credential-bearing refresh/logout, minimal health checks |
+| Proposer / `submitter` | Own drafts/submissions, fields, attachments, submit, progress, PDF; cancellation only when authorized by configured source states |
+| Checker / `checker` | First assigned reviewer, resolved from proposer.checkerId; approve/reject only their ready task |
+| Mengetahui / `acknowledger` | Sequential approval after Checker and before Menyetujui |
+| Menyetujui / `approver` | Sequential final approval stage |
+| `backofficeAdmin` | Reserved role; no global read, override, cancel or reassignment privileges inferred |
+| Future superadmin | Account-management UI/API deferred; trusted provisioning command supplied now |
+| Backend worker | Scans private attachments and audits results; cannot be selected as a client role |
 
-The HTML and its scripts are complementary evidence, not authoritative business rules. Mockup data is inconsistent: a rejected row remains in the current-turn inbox; detail hard-codes `myRole: "Menyetujui"` even for a Checker; `confirmSubmit` only returns to the list; save-draft has no handler; filter controls do not actually filter the rows; number/date/checker values are fixed samples. These behaviors must not become backend logic.
+An active role and the required object relationship are both necessary. Roles are not job titles. Staff/superuser flags do not bypass API permissions. A completed approved/rejected task retains read access while that reviewer role is still granted; waiting/voided tasks alone confer no access. An owner uses user-facing routes; reviewers use `/backoffice` routes. All notes on an authorized program are readable by its proposer and authorized current/completed reviewers.
 
-**Contract labels:** “Specified” means sufficiently clear to describe in OpenAPI, using explicitly labeled technical recommendations. It does not mean implemented or production-approved. “Provisional” means a business-policy decision is outstanding; its request/response is an illustrative proposal only and its operation is excluded from OpenAPI `paths`. Unresolved behavior is never silently enabled. OpenAPI extensions list every exclusion. Some shared schemas support provisional examples; schema presence does not authorize an endpoint.
-
-Questions Q1–Q11 and assumptions A1–A6 are listed at the end. Especially important before finalizing operations: registration trust/activation, Checker mapping, reviewer eligibility and multi-person quorum, intermediate rejection, type/cost provenance, required files, cancellation rights and Backoffice scope. Endpoint-specific dependencies appear below. Existing read data may be represented even where its future mutation rules remain undecided.
-
-## 2. Domain and actors
-
-PT Total Chemindo Loka employees request approval for Sales & Marketing programs (examples: Bundling and Diskon) at one or more locations (examples: BSD and Bekasi), with execution dates and supporting proposals/cost spreadsheets. This is a program approval application; customer CRM, orders, invoicing, payments and budget execution are not established requirements.
-
-| Actor / proposed role code | Responsibility and scope |
-| --- | --- |
-| Unauthenticated employee | Login; registration intent is visible but provisioning is unresolved. |
-| Pengaju / `submitter` | Own drafts and submissions, attachments, submit, own progress and printable forms. |
-| Checker / `checker` | First review stage; reviewer is auto-filled, not selectable in the actual form. Mapping needs Q2. |
-| Mengetahui / `acknowledger` | Middle stage; one or more selected people. Whether this is an acknowledgement or a veto-bearing approval needs Q3/Q4. |
-| Menyetujui / `approver` | Final approval stage; one or more selected people. |
-| Admin Backoffice / `backofficeAdmin` | Label appears in header only. Global read, user administration, reassignment and override privileges are **not granted** by this design. Q8 must define them. |
-| Backend system | Resolves identity/policy, stores documents, scans uploads, evaluates transitions and records audits. No client-selectable system role. |
-
-Roles are capabilities, not job titles or display names. A user can have multiple roles if trusted provisioning permits it; a role does not create a review assignment. An active role plus the relevant ownership/ready-task relationship is required. A backoffice administrator who also has an assigned reviewer role can act only under that reviewer permission. Self-review and cross-stage duplicates require Q3; no override is implied.
-
-## 3. User flows
+## User flows
 
 ### Authentication
 
-1. Masuk sends email/password; on success the service stores session credentials and loads `/users/me` (also included in login response).
-2. Daftar collects full name, employee number, email and password. Activation, corporate-domain restriction, identity matching and verification are not designed. The provisional registration receipt grants no session.
-3. Password visibility is local UI state. Refresh/logout are supporting session requirements, not additional screens.
-4. Forgot password, email verification, invitation acceptance, SSO, MFA and account/profile administration have no supplied flows. Their endpoint inventory remains deferred pending Q1/Q10; no guessed reset/email delivery contract is included.
+1. The organization provisions an employee’s email, password, role grants, locations, Checker/eligible reviewers and signature. There is no public registration endpoint.
+2. Native Flutter sends email/password with `clientType: native`; web first obtains `/auth/csrf`, then sends `clientType: web`, credentials-enabled cookies and `X-CSRFToken`.
+3. Login returns an access token and profile. Native receives a refresh token; web receives a CSRF token and an HttpOnly refresh cookie. `/users/me` refreshes current account information.
+4. Access lasts 15 minutes. Refresh rotates access and refresh credentials together within a 30-day absolute session lifetime. Reuse revokes that session family. Logout revokes that device/session family.
 
 ### Program Submission
 
-1. Load only the caller's submissions. Search number/name; select a draft to resume editing or a submitted record to read detail.
-2. Create a draft (can be empty), with a server-generated identifier/number. Populate applicant identity from the account. `submittedAt` stays null until actual submit; the form's prefilled date must not be mistaken for submission time.
-3. Save name, multiple location IDs and execution start/end dates. Resolve Checker and reviewer options on the backend from saved context. Choose at least one Mengetahui and Menyetujui for eventual submit; mockup defaults allow up to two and three, with editor configuration up to four and five respectively.
-4. Upload/remove supporting `.pdf`, `.xls`, `.xlsx` files (mockup: maximum 10 MB each). Draft saving can remain incomplete; submit has stronger validation. Mechanism, cost simulation and sales targets are in attachments, with no structured line-item editor.
-5. Submit confirmation previews saved values. “Batal” dismisses this modal locally. Confirming will freeze content and route to Checker once Q2–Q6 are settled.
-6. Detail displays status, all stage reviewers/decisions, attachments and a printable form. PDF generation is a proposed supporting endpoint; current mockup uses browser print. Four static signature columns must generalize to all selected people in data.
+1. Load the caller’s own list, search/filter, create an empty or populated draft, and retain its ID and ETag.
+2. Load authorized locations/types, the resolved Checker, and explicitly eligible selectable reviewers. Save name, type, exact IDR cost, execution dates, locations, and ordered reviewer arrays.
+3. Optionally upload one PDF/Excel file per request. Poll metadata for scanning status; retained pending/rejected files block submit. Removal is available only in drafts.
+4. Detail supplies `submissionIssues`, `allowedActions`, and `myActiveTaskIds`. The backend validates all references, readiness and policy before submit.
+5. Submit freezes the plan, display identity/master labels, policy and proposer signature, creates tasks and activates Checker. Submitted content is immutable.
+6. View progress, every review note and a printable PDF. Cancellation remains gated until its allowed source states are answered.
 
 ### Backoffice
 
-1. Apply filters to current actionable submissions. Backoffice prose explicitly says the next reviewer sees an item only after the previous stage is approved.
-2. Filter by program number, period, Checker, Mengetahui, Menyetujui, type, location and submitter. Multi-select person filters use IDs, not names. Empty results and clearing filters require no mutation endpoint.
-3. Open an assigned item, inspect complete form/attachments and identify the exact ready task.
-4. Approve or Not Approved opens confirmation with an optional note. Cancel confirmation is local. On confirm, backend checks task assignment/state/version and commits the decision atomically.
-5. Decision display becomes immutable. History visibility is unresolved because sample rejected rows contradict the current-turn wording. “Pending” exists in script helpers but is not an exposed action in the final markup; there is no reset-to-pending endpoint.
-6. Dashboard, master-data editing and reports have no completed designs. Only supporting read resources are specified; dashboard-summary is a clearly labeled proposal.
+1. The inbox includes programs with the caller’s ready task in a currently granted reviewer role. Future queued tasks are not actionable or visible through that assignment alone.
+2. Open detail, read files/notes/PDF, then approve or reject one concrete task with the current program ETag and an idempotency key. Notes are optional under the current mockup contract.
+3. Approval snapshots the signer’s provisioned image and activates the next person. Only after all Mengetahui approvals does Menyetujui begin; the last approval closes the program.
+4. Any assigned ready reviewer may reject, except the proposer. Rejection immediately closes the program and voids the rest of the chain.
+5. `/backoffice/review-history` supports a separate history page with the usual list/detail layout. Completed reviewers retain read access, including while later reviewers still work. This phase supplies its API, not a Flutter page.
 
-## 4. Initial data model recommendation
+## Data model and MySQL relationships
 
-Use a single modular Django REST Framework backend and MySQL with transactions, plus private blob storage when uploads are implemented. Flutter targets mobile, web and desktop. The framework and database are now user-selected; the detailed business model below remains a recommendation. No microservices, message broker, generalized workflow engine or event-sourced database is required. A small worker/poller may scan quarantined files; its product-facing contract is attachment scan status.
+Application IDs are opaque prefixed strings up to 64 characters. Internally generated UUIDs do not encode authority. Required storage fields are populated server-side; nullable draft fields stay nullable until submit validation.
 
-| Entity | Initial fields and constraints | Relationships / notes |
-| --- | --- | --- |
-| User | `id`, normalized unique `email`, unique `employeeNumber`, `fullName`, nullable `jobTitle`, `status`, `timeZone`, timestamps; password hash is internal only | Roles via UserRole; location scope via UserLocation. Public User excludes password/session internals. Active/disabled covers existing accounts; registration lifecycle awaits Q1. |
-| UserRole / UserLocation | `(userId, role)` / `(userId, locationId)` unique | Trusted assignment only; do not infer roles from job title. Location scope authority awaits Q2. |
-| Session | `id`, `userId`, refresh-token-family ID, hashed refresh token records, hashed opaque access credentials, access/refresh expiry, revocation timestamps, rotation parent, created/last-used timestamps | Many per user; no plaintext credential persistence. Immediate revocation/disable checks. |
-| Location | `id`, unique `code`, `name`, `isActive`, timestamps | Many-to-many submissions; sample BSD/Bekasi are records. Whether branch/outlet is a separate hierarchy awaits Q2. |
-| ProgramType | `id`, unique `code`, `name`, `isActive` | Nullable reference from submission; Bundling/Diskon are records, not a fixed extensibility limit. Writer/requiredness awaits Q5. |
-| ProgramSubmission | `id`, unique `programNumber`, `ownerId`, nullable draft `programName`, nullable `programTypeId`, nullable `periodStart`/`periodEnd`, nullable `estimatedCostAmount`, currency IDR when cost known, `status`, nullable `currentStage`, `version`, `createdAt`, `updatedAt`, nullable `submittedAt`, nullable `closedAt`, nullable `cancellationReason` | Owner 1:N submissions. Decimal(16,2) proposed for money. Submitted records retain identity/content/policy snapshots; never infer type/cost from title or Excel. `closedAt`/cancellationReason are internal recommendations pending lifecycle policy. |
-| SubmissionLocation | `(submissionId, locationId)` unique; snapshot code/name at submit | N:M; list response returns locations array, not comma-separated text. |
-| SubmissionReviewer | `submissionId`, `stage`, `reviewerId`, `position`, source/policy version, identity snapshot at submit | Draft reviewer plan; exactly one resolved Checker at submit. Preserve selection order without assuming it defines execution order. Cardinality from server policy. |
-| ReviewTask | `id`, `submissionId`, `stage`, `reviewerId`, `position`, `status`, eligibility timestamp, decision reference | Created when submitting; waiting/ready/approved/rejected/voided. Exactly one effective decision per task, enforced with unique constraint. Q3 determines which tasks become ready. |
-| ReviewDecision | `id`, unique `taskId`, `actorId`, `decision`, nullable `note`, `decidedAt`, policy version | Append-only. UI task response projects decision/note/time. Actor must equal current authorized assignee unless future delegation policy explicitly allows otherwise. |
-| Attachment | `id`, `submissionId`, uploader ID, safe original `fileName`, detected `contentType`, `sizeBytes`, internal random `storageKey`, SHA-256, `scanStatus`, uploaded/scanned/removed timestamps | One submission owns each attachment. Quarantine until clean. Do not return keys/checksum internals in baseline response. |
-| WorkflowPolicy / CheckerMapping | Versioned rule data, effective scope, Checker resolution, reviewer eligibility, configured min/max | Recommendation for server configuration, not a general editable workflow resource. Execution/quorum/rejection policy remains unresolved; configuration must not guess it. Snapshot applied version at submit. |
-| AuditLog | `id`, `occurredAt`, actor/user/session or system identity, event type, resource type/ID, request ID, outcome, sanitized changed fields, version before/after | Append-only; log draft changes, submit, decisions, cancellation, uploads/removals, downloads, auth/role/policy changes. Do not expose unrestricted audit API without Q8. |
-| IdempotencyRecord | actor/credential scope, method, canonical path, key, request hash, response status/body/headers, timestamps/expiry | Unique key scope and transaction boundary prevent duplicate drafts/files/decisions. Retain 24 hours (A3). |
-
-Recommended indexes: normalized user email/employee number; unique program number; `(ownerId, createdAt, id)`; `(reviewerId, status, submissionId)` on tasks; `(status, createdAt, id)` on submissions; both directions of location/reviewer joins; attachment parent ID; `(resourceType, resourceId, occurredAt)` on audits. Apply query scope before counting/pagination. Benchmark substring search before adding a search service.
-
-Enums (JSON values remain stable English codes; Flutter translates display labels):
-
-| Enum | Values |
+| Entity | Principal stored fields and relationships |
 | --- | --- |
-| Role | `submitter`, `checker`, `acknowledger`, `approver`, `backofficeAdmin` |
-| SubmissionStatus | `draft`, `pendingChecker`, `pendingAcknowledgement`, `pendingApproval`, `approved`, `rejected`, `cancelled` (candidate only) |
-| Stage | `checker`, `acknowledgement`, `approval` |
-| ReviewTaskStatus | `waiting`, `ready`, `approved`, `rejected`, `voided` (candidate termination/deactivation projection) |
-| ReviewDecision | `approve`, `reject`; no mutable `pending` decision |
-| UserStatus | `active`, `disabled`; registration states await Q1 |
-| AttachmentScanStatus | `pending`, `clean`, `rejected` |
-| Currency | `IDR` for baseline examples; multi-currency awaits Q5 |
+| User | id, unique normalized email, Argon2 password hash, fullName (150), nullable unique employeeNumber (50), jobTitle (150), timeZone, active/staff flags, created/updated dates, nullable Checker self-FK, assigned locations M:N, nullable current AccountSignature FK |
+| UserRole | User FK + role enum, unique pair; multiple explicit capabilities per employee |
+| AccountSignature | id, owner User FK, unique private storage key, SHA-256, createdAt; immutable image versions, event references protected from deletion |
+| AuthSession | id, User FK, native/web transport, unique hashed access token, access/absolute refresh expiry, revokedAt, createdAt |
+| RefreshCredential | Session FK, unique token hash, usedAt, createdAt; rotated credentials retained to detect reuse |
+| Location | id, unique code (50), name (150), isActive; user and program M:N relationships |
+| ProgramType | id, unique code (50), name (150), isActive; Program FK |
+| ReviewerEligibility | employee User FK, reviewer User FK, acknowledgement/approval stage; unique triple; organization assigns exact eligibility |
+| WorkflowPolicy | singleton configuration: sequential order, terminal rejection, required signature, nullable self-approval/type-cost requirements, cancellation source-state array, reviewer count limits, updatedAt |
+| ProgramCounter | year primary key + integer sequence, allocated under row lock; PRG-YYYY-NNNN, Asia/Jakarta rollover; uniqueness promised, not gaplessness |
+| Program | id, unique programNumber, owner User FK, nullable name/type/dates/Decimal(16,2) cost, locations M:N, status, currentStage, integer version, created/updated/submitted/closed times, cancellation reason, immutable submission/policy JSON snapshots, proposer signature FK |
+| DraftReviewer | Program FK, reviewer User FK, acknowledgement/approval stage, 1-based position; unique stage-position and stage-reviewer per program |
+| ReviewTask | id, Program/User FKs, reviewer display snapshot, stage, position, task status, decision time/note, nullable snapshotted signature FK; unique program-stage-position |
+| Attachment | id, Program/uploader FKs, safe filename (255), private unique key, detected MIME, byte size, SHA-256, scan status/reason, uploaded/scanned/removed times; soft removal |
+| AuditLog | actor nullable User FK, event, resourceId, requestId, bounded event metadata, timestamp; no request bodies/passwords/tokens/signature bytes |
+| IdempotencyRecord | unique hashed actor/method/path/key scope, request fingerprint, original response/status/selected headers, expiry; 24-hour replay contract |
+| RateLimitBucket | hashed key, count, window reset; transactional database-backed counters |
 
-UI mapping: Draft → `draft`; Menunggu checker → `pendingChecker`; intermediate Mengetahui stage → proposed `pendingAcknowledgement` (no explicit badge example); Menunggu persetujuan → `pendingApproval`; Disetujui → `approved`; Ditolak → `rejected`. `cancelled` has no supplied UI.
+MySQL uses InnoDB, utf8mb4, strict SQL mode and READ COMMITTED transactions. FK/uniqueness/check constraints protect relationships, review positions, nonnegative cost and ordered dates. Indexes cover owner/status list access, reviewer task queues and resource audit lookup. Submission actions lock the parent row; idempotent actions also serialize writes for the actor. Signature references and completed tasks use protective deletion rules. Migration files are the authoritative SQL schema history; no SQLite fallback is used.
 
-## 5. Authorization and lifecycle
+```mermaid
+erDiagram
+    USER ||--o{ PROGRAM : proposes
+    USER ||--o{ USER_ROLE : has
+    USER ||--o{ ACCOUNT_SIGNATURE : owns
+    USER ||--o{ AUTH_SESSION : opens
+    AUTH_SESSION ||--o{ REFRESH_CREDENTIAL : rotates
+    USER ||--o{ REVIEWER_ELIGIBILITY : configures
+    PROGRAM_TYPE ||--o{ PROGRAM : classifies
+    PROGRAM }o--o{ LOCATION : executesAt
+    PROGRAM ||--o{ DRAFT_REVIEWER : selects
+    PROGRAM ||--o{ REVIEW_TASK : freezes
+    PROGRAM ||--o{ ATTACHMENT : contains
+    ACCOUNT_SIGNATURE |o--o{ REVIEW_TASK : signs
+```
 
-| Endpoint family | Effective authorization |
-| --- | --- |
-| Login / provisional register | Public, throttled; never trusts client roles or employee ID as proof of identity. |
-| Refresh / logout | Possession of valid refresh credential for rotation; logout hides token existence. No bearer access requirement. |
-| `/users/me`, master lists | Active authenticated account; directory/location data constrained to permitted scope. |
-| `/program-submissions/**` | `submitter` plus owner match, including files/PDF; mutations also require draft/allowed transition. |
-| `/backoffice/program-submissions/**`, person filter options | Matching reviewer role plus at least one current ready task assigned to caller; actions additionally target that exact task. |
-| Provisional dashboard | Proposed same current-task scope; no organization-wide counts. |
-| Admin/global read or write | Unspecified, no implicit superuser permission. |
+### Status lifecycle
 
-The server returns 403 for a missing endpoint-level role and 404 for an object outside authorized scope. Filter/search/count/PDF/file routes enforce the same scope. A stale task action can return 409 to its recorded assignee without granting post-decision read access; unrelated users still receive 404. Client-supplied IDs and `allowedActions` never bypass authorization.
+Program enum: `draft`, `pendingChecker`, `pendingAcknowledgement`, `pendingApproval`, `approved`, `rejected`, `cancelled`. Stage enum: `checker`, `acknowledgement`, `approval`; currentStage is null in draft/terminal states. Review tasks: `waiting`, `ready`, `approved`, `rejected`, `voided`. Attachments: `pending`, `clean`, `rejected`. Role and transport enums are listed above.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> draft: owner creates
-    draft --> draft: owner saves / changes files
-    draft --> pendingChecker: owner submit [policy required]
-    pendingChecker --> pendingAcknowledgement: Checker approves [policy required]
-    pendingAcknowledgement --> pendingApproval: Mengetahui completion [Q3]
-    pendingApproval --> approved: final approval completion [Q3]
-    pendingApproval --> rejected: final rejection [Q4]
-    pendingChecker --> rejected: intermediate rejection [Q4 unresolved]
-    pendingAcknowledgement --> rejected: intermediate rejection [Q4 unresolved]
-    draft --> cancelled: owner cancellation [Q7 proposal only]
+    [*] --> draft
+    draft --> pendingChecker: proposer submits
+    pendingChecker --> pendingAcknowledgement: Checker approves
+    pendingAcknowledgement --> pendingAcknowledgement: next Mengetahui person
+    pendingAcknowledgement --> pendingApproval: last Mengetahui approves
+    pendingApproval --> pendingApproval: next Menyetujui person
+    pendingApproval --> approved: last Menyetujui approves
+    pendingChecker --> rejected: ready Checker rejects
+    pendingAcknowledgement --> rejected: ready Mengetahui rejects
+    pendingApproval --> rejected: ready Menyetujui rejects
+    approved --> [*]
+    rejected --> [*]
+    cancelled --> [*]
 ```
 
-| From | Action / authorized actor | To / invariant | Confidence |
-| --- | --- | --- | --- |
-| none | Create / submitter | draft; owner and number assigned by server | Specified |
-| draft | Save/upload/remove / owner | draft; version increases | Specified |
-| draft | Submit / owner | pendingChecker; freeze fields/files/plan; Checker task ready | Direction observed; Q2–Q6 block final contract |
-| pendingChecker | Approve / assigned ready Checker | pendingAcknowledgement if stage complete | Ordered stages observed; Mengetahui semantics await Q3 |
-| pendingAcknowledgement | Approve or acknowledge / assigned ready Mengetahui | Same state until completion, then pendingApproval | Action naming, concurrency/quorum await Q3 |
-| pendingApproval | Approve / assigned ready approver | Same state until completion, then approved | Final approval observed; multi-person completion awaits Q3 |
-| any pending stage | Reject / assigned ready reviewer if policy permits | rejected only if confirmed terminal-rejection rule applies | Final rejection observed; intermediate authority/termination await Q4 |
-| draft | Cancel / proposed owner | cancelled | User requested example, not mockup behavior; Q7 |
-| pending / approved / rejected | Cancel, revise, resubmit, reopen, override | Undecided; no transition specified | Q4/Q7/Q8 |
+Cancellation edges are intentionally not drawn: their source states are unresolved. Once authorized, only the owner can transition an allowlisted state to cancelled; outstanding tasks become voided. No revision, reopening, delegation or override endpoint exists. A same-stage approval can leave program status unchanged while incrementing version and moving readiness to the next person. The proposer cannot reject even if granted a reviewer role. Unconfirmed self-approval and cross-stage duplicate reviewers block submit.
 
-No transition code should be implemented from dotted assumptions. The chart is a review aid, not an authorization policy. No generic status PATCH exists. Tasks only become ready when the backend's confirmed sequencing/quorum rule permits it; position merely preserves selection order. Each mutation compares version, checks policy/authorization, changes state, writes decision/audit/idempotency result and commits atomically. Failure rolls back all effects. Actions return the full updated detail to avoid frontend transition calculations. `allowedActions` and `submissionIssues` reflect the caller and current rules; absent/unconfigured policy yields no submit/decision capability. After an allowed decision the response may include the committed snapshot even when the actor no longer has inbox access.
+## API conventions and Flutter consumption
 
-## 6. API conventions
+- Base path `/api/v1`, no trailing slash, JSON `camelCase`; Python/database code uses snake_case. Explicit DTO serializers control the mapping.
+- Success: `{"data": ..., "meta": {"requestId": "req_..."}}`. Lists put pagination alongside requestId in meta. Binary file/PDF success responses stream bytes; failures still use JSON.
+- Error: `{"error":{"code":"VALIDATION_FAILED","message":"One or more fields are invalid.","details":[{"field":"periodEnd","code":"INVALID","message":"End date must be on or after start date."}]},"meta":{"requestId":"req_example"}}`.
+- Unknown JSON/query fields or duplicate scalar query keys: 400. Field validation: 422. Authentication: 401 with Bearer challenge; role denial: 403; inaccessible/mismatched resource: 404. Policy/state conflict: 409. Stale version: 412; missing If-Match: 428. Oversize: 413; wrong media/content: 415; throttle: 429 + Retry-After; sanitized unexpected failure: 500; unavailable database/storage: 503. Unsupported verbs/Accept use 405/406. Successful creates return 201, uploads 202, other operations 200.
+- Pagination: page defaults to 1, pageSize 20 (max 100), with totalItems, totalPages and hasNextPage; an out-of-range page returns []. No cursor abstraction is added now.
+- Search is trimmed literal case-insensitive substring; q max 100. Repeated status/location/reviewer filters use repeated keys and OR inside that filter. Different filters combine with AND. Filtering never widens authorization. `periodStartFrom`/`periodStartTo` are inclusive bounds on execution start dates. This is explicitly a start-date filter, not overlap/submission-date filtering.
+- Sort allowlist: `-createdAt` (default), `createdAt`, `-updatedAt`, `updatedAt`, `programNumber`; append id ascending for stable ties. Master/people results use stable code/name then id ordering.
+- Instants are UTC RFC 3339 strings with Z; execution dates are `YYYY-MM-DD` without conversion. Profile timezone defaults to Asia/Jakarta. Flutter formats dates for display and costs as Rp. IDR amounts are exact strings such as `"42000000.00"`, never formatted currency strings or floating point JSON numbers.
+- Detail and submission mutation responses include `ETag: "version"`. PATCH and action/upload/removal calls send If-Match with that quoted parent version. Every successful mutation and scan verdict increments the parent version. On 412, fetch fresh detail before reconciling; do not overwrite blindly.
+- Create, submit, cancel, approve, reject, upload and attachment removal require a random 16–128-character Idempotency-Key. Scope includes actor/method/path; fingerprint includes original If-Match and JSON body (or filename/MIME/bytes checksum). An identical retry replays its original successful business response for 24 hours with a fresh requestId; changed payload/precondition under the same key returns 409. Authorization is checked before replay. PATCH is protected by versioning, not a separate replay cache. Failed operations are not saved as successes.
+- All API responses use `Cache-Control: no-store` and server-generated X-Request-Id. Optional HEAD/OPTIONS follow DRF behavior. No client-supplied owner, checker, actor, next status, signature image or task list can change server authority.
 
-All paths below are relative to **`/api/v1`**. OpenAPI uses `servers: [{url: /api/v1}]` and paths without a duplicate prefix. HTTPS deployment origin is configured by environment. Version breaking changes under `/api/v2`; additive optional fields remain v1. Response clients should ignore unknown fields and handle unknown future enum values safely. Requests reject unknown fields (mass-assignment protection).
+Flutter feature repositories should wrap auth, submissions, backoffice and master-data services. Keep one in-flight refresh, retain draft IDs and pending action keys, map errors to field/session/conflict states, and use the latest allowedActions/myActiveTaskIds/submissionIssues for presentation. Access checks and workflow transitions remain server-side. Use OS secure storage for native refresh credentials; web uses credentials-enabled requests, in-memory access tokens and HttpOnly refresh cookies, never localStorage for refresh tokens. Browser API and frontend must be deployed on the same site for SameSite=Lax cookies; configure trusted origins/credentials explicitly. No frontend implementation is included here.
 
-JSON field names are `camelCase`; URLs use plural kebab-case resources. Opaque IDs are immutable strings (example `sub_0144`); do not use human program number as a path ID. IDs/names in examples are illustrative; the inconsistent mockup records are not seed truth. Money uses exact decimal strings such as `{"currency":"IDR","amount":"42000000.00"}`; never transmit `Rp 42 jt` or binary floating point amounts. Draft name/dates may be null; missing cost/type is null, never zero or inferred. Null and omission are distinct for PATCH; arrays replace in full, not merge by index.
+## Endpoint catalogue
 
-### Responses, errors and status codes
+All operations below are mounted under `/api/v1`. Each entry includes purpose, allowed roles, parameters, body, successful example, errors and rules. Shared request DTO constraints follow the catalogue. Cancellation’s success example is conditional on explicit future source-state configuration. The single-reviewer sample sequence is create version 1 → edit 2 → upload 3 → scan 4 → submit 5 → Checker 6 → Mengetahui 7 → final approve/reject 8. Removal/cancellation are alternative examples. Always use live server versions and IDs.
 
-Single success: `{ "data": <typed object>, "meta": { "requestId": "req_01salesdesign" } }`. Collections: `data` is an array and `meta` includes page metadata. JSON errors: `{ "error": { "code": "VALIDATION_FAILED", "message": "Validation failed.", "details": [{ "field": "periodEnd", "code": "END_BEFORE_START", "message": "End date must be on or after start date." }] }, "meta": { "requestId": "req_01salesdesign" } }`. Field paths use dotted paths/zero-based indexes; null means a whole-request issue. Flutter branches on error code, not human message. Never return a 200 with an error payload.
-
-| HTTP | Meaning |
-| --- | --- |
-| 200 | Read, update, rotation/logout, removal, candidate domain action success |
-| 201 | Persisted new draft, Location and ETag returned |
-| 202 | Attachment persisted but quarantined/pending scan; provisional registration receipt |
-| 400 | Malformed JSON, unknown parameters/fields, invalid query encoding, missing idempotency header |
-| 401 | Missing/invalid access credential, generic invalid login, invalid/reused refresh credential |
-| 403 / 404 | Endpoint role denied / object absent or out of scope |
-| 409 | Locked state, already-decided task, unresolved required policy, attachment not clean, idempotency conflict |
-| 412 / 428 | Stale If-Match / missing If-Match |
-| 413 / 415 | Payload too large / unsupported media type |
-| 422 | Valid syntax but invalid fields, references, date range or required submission data |
-| 429 | Throttled; Retry-After seconds |
-| 500 / 503 | Sanitized unexpected error / transient dependency failure (Retry-After on 503) |
-
-All JSON successes/errors carry `X-Request-Id` matching `meta.requestId`. Auth failures return an appropriate `WWW-Authenticate` challenge. Auth/personal/document responses use `Cache-Control: no-store`. Binary content/PDF endpoints intentionally return raw bytes with their actual media type, `Content-Disposition: attachment`, and `X-Content-Type-Options: nosniff`; their errors remain the same JSON envelope. Binary success has no JSON example because wrapping it would contradict the download contract. No 204 or 304 is part of this baseline.
-
-### Collection queries
-
-`page=1`, `pageSize=20` by default; `pageSize` 1..100. `totalItems` counts the complete authorized filtered set; `totalPages = ceil(totalItems/pageSize)`, zero for empty results; `hasNextPage = page < totalPages`. Out-of-range pages return empty data, not 404. Offset pagination is deliberately simple for Flutter; a future cursor mode should be introduced explicitly if volume requires it. Concurrent changes may shift pages; stable ordering prevents tie ambiguity, not snapshot isolation across requests.
-
-Repeated query keys encode arrays: `locationId=loc_bsd&locationId=loc_bekasi`. OR within one array filter, AND across different filters. Empty selection omits the key; no empty strings, comma-separated or JSON-encoded arrays. Unknown parameters and malformed syntax return 400; invalid scalar/enum/range values return 422. Unauthorized/unknown filter IDs produce no matches, not an information leak. q is a trimmed case-insensitive literal substring, maximum 100 characters, not a regular expression. Master lists sort code then id; people options sort fullName then id. Submission sorts are allowlisted: `-createdAt` default, `createdAt`, `-updatedAt`, `updatedAt`, `programNumber`; id ascending is the tie-breaker. Totals deduplicate submissions with several matching locations/tasks.
-
-Period filtering is proposed explicitly as inclusive **execution start date** bounds `periodStartFrom` and `periodStartTo` (A2), not overlap or submission timestamp. One-sided bounds are supported; if both given, from <= to. No implicitly named ambiguous `dateFrom` is exposed. Confirm whether the UI intended an overlapping execution period or submission dates before client integration.
-
-### Dates, validation, concurrency and idempotency
-
-Execution dates use ISO `YYYY-MM-DD`, inclusive endpoints with start <= end; they are date-only values, never midnight UTC conversions. Instants use RFC 3339 UTC with `Z` (example `2026-08-21T03:00:00Z`). Display in the account's IANA `timeZone`; `Asia/Jakarta` is the proposed default (A2), not an assumption that every location shares it. Backend timestamps and program-number year use explicit policy. Backdated/future-date cutoffs are unresolved (Q5); no prohibition is invented.
-
-Recommended transport bounds: name 1..200 non-whitespace characters when set; full name 1..150; employee number 1..50; email <=254; decision note/cancellation reason <=2000. Draft supports missing data; on submit the form's required name, >=1 location, both dates, >=1 Mengetahui and >=1 Menyetujui are revalidated. IDs must exist, be active where selected and satisfy confirmed eligibility. A transport cap of 100 locations is A6, not a business maximum. Reviewer arrays cap at mockup editor bounds 4/5; actual policy limits may be lower. Number generation uniqueness/allocation is backend-only; display pattern is a recommendation awaiting Q5.
-
-Detail and submission mutation successes return strong `ETag: "<version>"`. All draft/file/domain mutations after create require the last known parent submission `If-Match`. Attachment scan changes also bump parent version. Missing => 428, stale => 412; refetch before deciding whether to retry. Create/read/login/refresh/logout have no If-Match. PATCH retries may return 412 after a lost successful response; read current state to reconcile rather than blindly overwrite.
-
-Require `Idempotency-Key` on draft creation, attachment upload/removal and provisional registration/submit/approve/reject/cancel. Random 16..128 characters, persisted by Flutter for one logical intent. Scope by authenticated actor (registration: normalized identity digest), method and canonical path; hash normalized body and relevant headers. For multipart hash actual bytes plus filename/type, excluding random multipart boundaries. Store status/body/Location/ETag atomically with mutation for 24 hours. After authenticating and checking role/object or recorded actor eligibility, replay an identical completed request **before** If-Match/state checks so a successful lost response can be recovered. Same key with different payload/If-Match => 409 IDEMPOTENCY_KEY_REUSED; in-progress duplicate => 409 REQUEST_IN_PROGRESS. No second decision/upload on replay. Requests failing before side effects need not reserve a key. Expired keys cannot guarantee deduplication; reconcile by resource state. Keep original response snapshot/version on replay; it may no longer be current.
-
-GET is safe and DELETE removal has explicit replay protection. PATCH uses optimistic concurrency; refresh deliberately has no automatic retry/replay path because rotation is single-use. Retry only safe operations or requests with the original idempotency key, use bounded jittered backoff for transient failures and respect Retry-After. A timeout is not proof of failure.
-
-## 7. Endpoint inventory and full contracts
-
-Every operation below inherits section 6 and the security requirements in section 8. No unlisted path/query/body fields are accepted. All authenticated requests require `Authorization: Bearer <accessToken>` except refresh/logout, whose body credential is explicitly described. Each error list also includes the common transient and transport errors applicable to that operation.
-
-| Method | Path (prefix `/api/v1`) | Purpose | Status |
-| --- | --- | --- | --- |
-| POST | `/auth/login` | Authenticate an existing active account. | Specified |
-| POST | `/auth/refresh` | Rotate the refresh token and issue a new access token. | Specified |
-| POST | `/auth/logout` | Revoke the current refresh-token family and its access sessions. | Specified |
-| POST | `/auth/register` | Request an employee account. | Provisional: Q1 |
-| GET | `/users/me` | Load the signed-in profile for the header and auto-filled applicant section. | Specified |
-| GET | `/master-data/locations` | List locations the caller may select. | Specified |
-| GET | `/master-data/program-types` | List program types used by read-only filters. | Specified |
-| GET | `/program-submissions` | List and search only submissions owned by the caller. | Specified |
-| POST | `/program-submissions` | Create a persisted draft, including an empty draft. | Specified |
-| GET | `/program-submissions/{submissionId}` | Read an owned draft or submission, progress and attachment metadata. | Specified |
-| PATCH | `/program-submissions/{submissionId}` | Partially update an owned draft. | Specified |
-| GET | `/program-submissions/{submissionId}/policy` | Load server-resolved checker, reviewer limits and upload constraints for this draft. | Specified |
-| GET | `/program-submissions/{submissionId}/reviewer-options` | List eligible reviewers for the selected draft and stage. | Specified |
-| POST | `/program-submissions/{submissionId}/attachments` | Upload one PDF/Excel attachment to an owned draft. | Specified |
-| GET | `/program-submissions/{submissionId}/attachments/{attachmentId}` | Read attachment metadata and scan status. | Specified |
-| DELETE | `/program-submissions/{submissionId}/attachments/{attachmentId}` | Remove an attachment from an owned draft. | Specified |
-| GET | `/program-submissions/{submissionId}/attachments/{attachmentId}/content` | Download an authorized, clean attachment. | Specified |
-| GET | `/program-submissions/{submissionId}/pdf` | Render a printable submission form from a consistent saved snapshot. | Specified |
-| GET | `/backoffice/program-submissions/{submissionId}/attachments/{attachmentId}/content` | Download an authorized, clean attachment. | Specified |
-| GET | `/backoffice/program-submissions/{submissionId}/pdf` | Render a printable submission form from a consistent saved snapshot. | Specified |
-| POST | `/program-submissions/{submissionId}/submit` | Freeze draft content and start the review chain. | Provisional: Q2, Q3, Q4, Q5, Q6 |
-| POST | `/program-submissions/{submissionId}/cancel` | Candidate withdrawal action; the mockup has no cancellation flow. | Provisional: Q7 |
-| GET | `/backoffice/program-submissions` | List submissions with a current ready review task assigned to the caller. | Specified |
-| GET | `/backoffice/program-submissions/{submissionId}` | Read submission details for a current task, including progress and decision targets. | Specified |
-| GET | `/backoffice/filter-options/people` | Populate submitter and reviewer person filters without an unrestricted directory. | Specified |
-| POST | `/backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/approve` | Record approval for exactly one assigned review task. | Provisional: Q3, Q4 |
-| POST | `/backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/reject` | Record rejection for exactly one assigned review task. | Provisional: Q3, Q4 |
-| GET | `/backoffice/dashboard-summary` | Candidate summary of the caller current review workload. | Provisional: Q9 |
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/auth/login` | Authenticate an existing active account. |
+| POST | `/auth/refresh` | Rotate the refresh token and issue a new access token. |
+| POST | `/auth/logout` | Revoke the current refresh-token family and its access sessions. |
+| GET | `/users/me` | Load the signed-in profile for the header and auto-filled applicant section. |
+| GET | `/master-data/locations` | List locations the caller may select. |
+| GET | `/master-data/program-types` | List active program types for draft selection and filters. |
+| GET | `/program-submissions` | List and search only submissions owned by the caller. |
+| POST | `/program-submissions` | Create a persisted draft, including an empty draft. |
+| GET | `/program-submissions/{submissionId}` | Read an owned draft or submission, progress and attachment metadata. |
+| PATCH | `/program-submissions/{submissionId}` | Partially update an owned draft. |
+| GET | `/program-submissions/{submissionId}/policy` | Load server-resolved checker, reviewer limits and upload constraints for this draft. |
+| GET | `/program-submissions/{submissionId}/reviewer-options` | List eligible reviewers for the selected draft and stage. |
+| POST | `/program-submissions/{submissionId}/attachments` | Upload one PDF/Excel attachment to an owned draft. |
+| GET | `/program-submissions/{submissionId}/attachments/{attachmentId}` | Read attachment metadata and scan status. |
+| DELETE | `/program-submissions/{submissionId}/attachments/{attachmentId}` | Remove an attachment from an owned draft. |
+| GET | `/program-submissions/{submissionId}/attachments/{attachmentId}/content` | Download an authorized, clean attachment. |
+| GET | `/program-submissions/{submissionId}/pdf` | Render a printable submission form from a consistent saved snapshot. |
+| GET | `/backoffice/program-submissions/{submissionId}/attachments/{attachmentId}/content` | Download an authorized, clean attachment. |
+| GET | `/backoffice/program-submissions/{submissionId}/pdf` | Render a printable submission form from a consistent saved snapshot. |
+| POST | `/program-submissions/{submissionId}/submit` | Freeze draft content and start the review chain. |
+| POST | `/program-submissions/{submissionId}/cancel` | Cancel an owned program when its source state is explicitly authorized. |
+| GET | `/backoffice/program-submissions` | List submissions with a current ready review task assigned to the caller. |
+| GET | `/backoffice/review-history` | List the caller’s completed review assignments on a separate history page. |
+| GET | `/backoffice/program-submissions/{submissionId}` | Read submission details for a current task, including progress and decision targets. |
+| GET | `/backoffice/filter-options/people` | Populate submitter and reviewer person filters without an unrestricted directory. |
+| POST | `/backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/approve` | Record approval for exactly one assigned review task. |
+| POST | `/backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/reject` | Record rejection for exactly one assigned review task. |
+| GET | `/auth/csrf` | Bootstrap a browser CSRF token. |
+| GET | `/health/live` | Check application liveness. |
+| GET | `/health/ready` | Check MySQL connectivity. |
 
 ### Authentication
 
@@ -233,22 +175,16 @@ Every operation below inherits section 6 and the security requirements in sectio
 
 Authenticate an existing active account.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** Public
 
-**Allowed roles:** Public.
+**Validation and business rules:** Login only for active, pre-provisioned employees. Normalize email, preserve password bytes, use uniform 401 failures. clientType defaults to native. Native returns refreshToken; web returns csrfToken and sets an HttpOnly SameSite=Lax refresh cookie, Secure outside development. Web first calls GET /auth/csrf and sends its X-CSRFToken with credentials. Origin-bearing login also requires CSRF. Access lasts 15 minutes; refresh families have a 30-day absolute expiry. No public registration.
 
-**Validation and business rules:** Email comparison is case-insensitive after trimming; never trim passwords. Invalid email/password/disabled account use the same 401 response. Credentials are never logged. Lifetime values are technical recommendations (A3).
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `X-CSRFToken` | header | no | string. Required for web/cookie/Origin-bearing requests. Obtain from /auth/csrf, then use the rotated token from login. |
+| `sales_refresh` | cookie | no | string. HttpOnly browser refresh transport. Sent automatically with credentials; do not set it from Flutter JavaScript. |
 
-**Path/query parameters and operation-specific headers:** none.
-
-**Required JSON request body:** `LoginRequest`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `email` | yes | string (email); maxLength=254 |
-| `password` | yes | string; minLength=1; maxLength=128 |
-
-Request example:
+**Request body:** application/json — `LoginRequest`; see DTO fields below.
 
 ```json
 {
@@ -257,7 +193,9 @@ Request example:
 }
 ```
 
-**Success: 200** — `SessionResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `Set-Cookie`.
+
+Native transport:
 
 ```json
 {
@@ -281,7 +219,8 @@ Request example:
       "timeZone": "Asia/Jakarta",
       "locationIds": [
         "loc_bsd"
-      ]
+      ],
+      "checkerId": "usr_andi"
     }
   },
   "meta": {
@@ -290,27 +229,56 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+Web transport:
+
+```json
+{
+  "data": {
+    "accessToken": "example-access-token-not-a-real-credential",
+    "tokenType": "Bearer",
+    "expiresIn": 900,
+    "refreshExpiresAt": "2026-09-20T03:00:00Z",
+    "sessionId": "ses_rizky",
+    "user": {
+      "id": "usr_rizky",
+      "fullName": "Rizky Pratama",
+      "jobTitle": "Sales Executive",
+      "employeeNumber": "B001",
+      "email": "rizky@example.com",
+      "status": "active",
+      "roles": [
+        "submitter"
+      ],
+      "timeZone": "Asia/Jakarta",
+      "locationIds": [
+        "loc_bsd"
+      ],
+      "checkerId": "usr_andi"
+    },
+    "csrfToken": "example-csrf-token-not-a-real-token"
+  },
+  "meta": {
+    "requestId": "req_01salesdesign"
+  }
+}
+```
+
+**Possible errors:** `400`, `401`, `415`, `422`, `429`, `500`, `503`, `403`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `POST /api/v1/auth/refresh`
 
 Rotate the refresh token and issue a new access token.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** Refresh-token holder
 
-**Allowed roles:** Refresh-token holder.
+**Validation and business rules:** Rotate both access and refresh tokens atomically; the previous access token becomes invalid immediately. Native sends refreshToken; web sends {} with sales_refresh cookie and X-CSRFToken. A used refresh token revokes the whole family, including the newest access token. Expired, disabled, revoked or wrong-transport sessions return 401. Serialize refresh calls in the client.
 
-**Validation and business rules:** Validate the hashed token and session, rotate once, revoke the family on reuse. This request uses the refresh credential, not an access bearer token. Serialize refresh requests in the client; do not automatically retry on a lost response. Role changes and disabled accounts take effect immediately.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `X-CSRFToken` | header | no | string. Required for web/cookie/Origin-bearing requests. Obtain from /auth/csrf, then use the rotated token from login. |
+| `sales_refresh` | cookie | no | string. HttpOnly browser refresh transport. Sent automatically with credentials; do not set it from Flutter JavaScript. |
 
-**Path/query parameters and operation-specific headers:** none.
-
-**Required JSON request body:** `RefreshRequest`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `refreshToken` | yes | string; minLength=32; maxLength=2048 |
-
-Request example:
+**Request body:** application/json — `RefreshRequest`; see DTO fields below.
 
 ```json
 {
@@ -318,7 +286,9 @@ Request example:
 }
 ```
 
-**Success: 200** — `SessionResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `Set-Cookie`.
+
+Native transport:
 
 ```json
 {
@@ -342,7 +312,8 @@ Request example:
       "timeZone": "Asia/Jakarta",
       "locationIds": [
         "loc_bsd"
-      ]
+      ],
+      "checkerId": "usr_andi"
     }
   },
   "meta": {
@@ -351,27 +322,56 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+Web transport:
+
+```json
+{
+  "data": {
+    "accessToken": "example-new-access-token-not-a-real-credential",
+    "tokenType": "Bearer",
+    "expiresIn": 900,
+    "refreshExpiresAt": "2026-09-20T03:00:00Z",
+    "sessionId": "ses_rizky",
+    "user": {
+      "id": "usr_rizky",
+      "fullName": "Rizky Pratama",
+      "jobTitle": "Sales Executive",
+      "employeeNumber": "B001",
+      "email": "rizky@example.com",
+      "status": "active",
+      "roles": [
+        "submitter"
+      ],
+      "timeZone": "Asia/Jakarta",
+      "locationIds": [
+        "loc_bsd"
+      ],
+      "checkerId": "usr_andi"
+    },
+    "csrfToken": "example-csrf-token-not-a-real-token"
+  },
+  "meta": {
+    "requestId": "req_01salesdesign"
+  }
+}
+```
+
+**Possible errors:** `400`, `401`, `415`, `422`, `429`, `500`, `503`, `403`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `POST /api/v1/auth/logout`
 
 Revoke the current refresh-token family and its access sessions.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** Refresh-token holder
 
-**Allowed roles:** Refresh-token holder.
+**Validation and business rules:** Revoke the identified session family; repeated logout with a validly shaped but already revoked/unknown credential succeeds. Native supplies refreshToken; web uses its HttpOnly cookie and X-CSRFToken, then the cookie is cleared. Other sessions are unaffected. Missing credential is 401. Does not require a valid access token.
 
-**Validation and business rules:** No live access token required. Accept current or previously rotated token from the family for revocation. Unknown, expired or already revoked tokens return the same success; do not expose whether a token existed. Clear client credentials after attempting logout. Other device sessions remain active.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `X-CSRFToken` | header | no | string. Required for web/cookie/Origin-bearing requests. Obtain from /auth/csrf, then use the rotated token from login. |
+| `sales_refresh` | cookie | no | string. HttpOnly browser refresh transport. Sent automatically with credentials; do not set it from Flutter JavaScript. |
 
-**Path/query parameters and operation-specific headers:** none.
-
-**Required JSON request body:** `RefreshRequest`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `refreshToken` | yes | string; minLength=32; maxLength=2048 |
-
-Request example:
+**Request body:** application/json — `RefreshRequest`; see DTO fields below.
 
 ```json
 {
@@ -379,7 +379,7 @@ Request example:
 }
 ```
 
-**Success: 200** — `LogoutResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `Set-Cookie`.
 
 ```json
 {
@@ -392,58 +392,34 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `415`, `422`, `429`, `500`, `503`, `403`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
-#### `POST /api/v1/auth/register`
+#### `GET /api/v1/auth/csrf`
 
-Request an employee account.
+Bootstrap a browser CSRF token.
 
-**Contract:** Provisional — Q1; illustrative only, excluded from OpenAPI paths.
+**Allowed roles:** Public
 
-**Allowed roles:** Public.
+**Validation and business rules:** Public read. Sets the CSRF cookie and returns the masked token; use credentials-enabled requests and X-CSRFToken for browser login/refresh/logout. No query parameters.
 
-**Validation and business rules:** PROVISIONAL Q1. Form fields are observed; account verification, identity source, provisioning and activation are not. Proposed generic 202 receipt must not grant a session or roles. Duplicate identity response must not enumerate accounts. Password minimum 15 and maximum 128 characters is a proposed no-MFA baseline.
+**Path/query parameters:** none.
 
-**Path, query and operation headers** (Bearer header additionally applies where required):
+**Request body:** none.
 
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128 | Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
-
-**Required JSON request body:** `RegistrationRequest`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `fullName` | yes | string; minLength=1; maxLength=150 |
-| `employeeNumber` | yes | string; minLength=1; maxLength=50 |
-| `email` | yes | string (email); maxLength=254 |
-| `password` | yes | string; minLength=15; maxLength=128 |
-
-Request example:
-
-```json
-{
-  "fullName": "Rizky Pratama",
-  "employeeNumber": "B001",
-  "email": "rizky@example.com",
-  "password": "example-password-for-documentation"
-}
-```
-
-**Success: 202** — `RegistrationResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
   "data": {
-    "message": "Registration request received."
+    "csrfToken": "example-csrf-token-not-a-real-token"
   },
   "meta": {
-    "requestId": "req_01salesdesign"
+    "requestId": "req_example"
   }
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `409 CONFLICT`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 ### User/Profile
 
@@ -451,17 +427,15 @@ Request example:
 
 Load the signed-in profile for the header and auto-filled applicant section.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** Any active authenticated role
 
-**Allowed roles:** Any active authenticated role.
+**Validation and business rules:** Return current authenticated identity, current role grants, assigned locationIds and nullable checkerId. Roles and relationships are provisioned by the organization. No public profile editing or account creation. No role grants are inferred from job title or staff flags.
 
-**Validation and business rules:** Only the caller profile. Job title, employee number, roles and location scope are managed by trusted provisioning, never by the submission request. No self-service profile editing is visible in the designs.
-
-**Path/query parameters and operation-specific headers:** none.
+**Path/query parameters:** none.
 
 **Request body:** none.
 
-**Success: 200** — `UserResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -478,7 +452,8 @@ Load the signed-in profile for the header and auto-filled applicant section.
     "timeZone": "Asia/Jakarta",
     "locationIds": [
       "loc_bsd"
-    ]
+    ],
+    "checkerId": "usr_andi"
   },
   "meta": {
     "requestId": "req_01salesdesign"
@@ -486,7 +461,7 @@ Load the signed-in profile for the header and auto-filled applicant section.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 ### Program Submission
 
@@ -494,30 +469,26 @@ Load the signed-in profile for the header and auto-filled applicant section.
 
 List and search only submissions owned by the caller.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Submitter role plus owner scope. Apply filters before pagination. Search program name/number; execution date filters bound periodStart inclusively. OR within repeated filters, AND between filters. Stable sorting appends id ascending. Out-of-range pages are empty.
 
-**Validation and business rules:** Ownership is server-derived and always applied before filters/counts. No ownerId override. Read projections preserve null programType/estimatedCost until their source is defined. Unknown or unauthorized filter IDs produce an empty list without disclosing them.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `page` | query | no | integer; minimum=1; default=1 | 1-based page. |
-| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20 | Items per page. |
-| `q` | query | no | string; maxLength=100 | Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax. |
-| `programNumber` | query | no | string; maxLength=64 | Exact program number; combines with q using AND. |
-| `status` | query | no | array<SubmissionStatus> (unique); max 7 | Repeat key for multiple statuses; OR within this filter. |
-| `locationId` | query | no | array<Id> (unique); max 100 | Repeat key; submission must match at least one selected location. |
-| `programTypeId` | query | no | Id | Exact type ID; submissions with unknown type do not match. |
-| `periodStartFrom` | query | no | string (date) | Inclusive lower bound on execution periodStart; not submittedAt. |
-| `periodStartTo` | query | no | string (date) | Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound. |
-| `sort` | query | no | string: `-createdAt`, `createdAt`, `-updatedAt`, `updatedAt`, `programNumber`; default=-createdAt | Default -createdAt; append id ascending internally as a stable tie-breaker. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `page` | query | no | integer; minimum=1; maximum=2147483647; default=1. 1-based page. |
+| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20. Items per page. |
+| `q` | query | no | string; minLength=1; maxLength=100. Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax. |
+| `programNumber` | query | no | string; maxLength=200. Exact program number; combines with q using AND. |
+| `status` | query | no | array of SubmissionStatus; maxItems=100. Repeat key for multiple statuses; OR within this filter. |
+| `locationId` | query | no | array of Id; maxItems=100. Repeat key; submission must match at least one selected location. |
+| `programTypeId` | query | no | Id. Exact type ID; submissions with unknown type do not match. |
+| `periodStartFrom` | query | no | string. Inclusive lower bound on execution periodStart; not submittedAt. |
+| `periodStartTo` | query | no | string. Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound. |
+| `sort` | query | no | string; enum=['-createdAt', 'createdAt', '-updatedAt', 'updatedAt', 'programNumber']; default=-createdAt. Default -createdAt; append id ascending internally as a stable tie-breaker. |
 
 **Request body:** none.
 
-**Success: 200** — `SubmissionListResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -526,7 +497,12 @@ List and search only submissions owned by the caller.
       "id": "sub_0144",
       "programNumber": "PRG-2026-0144",
       "programName": "Bundling Idul Adha Outlet BSD",
-      "programType": null,
+      "programType": {
+        "id": "typ_bundling",
+        "code": "bundling",
+        "name": "Bundling",
+        "isActive": true
+      },
       "locations": [
         {
           "id": "loc_bsd",
@@ -537,7 +513,10 @@ List and search only submissions owned by the caller.
       ],
       "periodStart": "2026-09-06",
       "periodEnd": "2026-09-20",
-      "estimatedCost": null,
+      "estimatedCost": {
+        "currency": "IDR",
+        "amount": "42000000.00"
+      },
       "owner": {
         "id": "usr_rizky",
         "fullName": "Rizky Pratama",
@@ -563,36 +542,21 @@ List and search only submissions owned by the caller.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `422`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `POST /api/v1/program-submissions`
 
 Create a persisted draft, including an empty draft.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter
 
-**Allowed roles:** submitter.
+**Validation and business rules:** Submitter role required. {} creates an empty draft. All supplied references must be active and authorized; selected reviewers require explicit per-employee eligibility plus the matching role. Allocate PRG-YYYY-NNNN under a MySQL row lock, yearly in Asia/Jakarta. Owner, checker, number, status, timestamps and tasks are server-owned. Never derive type/cost from uploaded spreadsheets. Drafts may be incomplete. Inspect submissionIssues before submit.
 
-**Validation and business rules:** All body fields optional; {} creates an empty draft with null scalars/empty arrays. Owner, status, number, checker, cost, type and timestamps are server-owned. Allocate immutable opaque ID and unique human number in one transaction. Validate provided references against confirmed eligibility; never use the mockup PEOPLE array as authorization. Missing routing may leave checker null and submissionIssues populated. See A1 and Q2/Q5.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128. Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
 
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128 | Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
-
-**Required JSON request body:** `DraftCreate`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `programName` | no | string; minLength=1; maxLength=200 or null |
-| `locationIds` | no | array<Id> (unique); max 100 |
-| `periodStart` | no | string (date) or null |
-| `periodEnd` | no | string (date) or null |
-| `acknowledgerIds` | no | array<Id> (unique); max 4 |
-| `approverIds` | no | array<Id> (unique); max 5 |
-
-Request example:
+**Request body:** application/json — `DraftCreate`; see DTO fields below.
 
 ```json
 {
@@ -607,11 +571,16 @@ Request example:
   ],
   "approverIds": [
     "usr_ratna"
-  ]
+  ],
+  "programTypeId": "typ_bundling",
+  "estimatedCost": {
+    "currency": "IDR",
+    "amount": "42000000.00"
+  }
 }
 ```
 
-**Success: 201** — `SubmissionResponse`. Parent submission `ETag: "1"`. `Location` points to the new draft or attachment metadata URI.
+**Success: 201.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`, `Location`.
 
 ```json
 {
@@ -619,7 +588,12 @@ Request example:
     "id": "sub_0144",
     "programNumber": "PRG-2026-0144",
     "programName": "Bundling Idul Adha Outlet BSD",
-    "programType": null,
+    "programType": {
+      "id": "typ_bundling",
+      "code": "bundling",
+      "name": "Bundling",
+      "isActive": true
+    },
     "locations": [
       {
         "id": "loc_bsd",
@@ -630,7 +604,10 @@ Request example:
     ],
     "periodStart": "2026-09-06",
     "periodEnd": "2026-09-20",
-    "estimatedCost": null,
+    "estimatedCost": {
+      "currency": "IDR",
+      "amount": "42000000.00"
+    },
     "owner": {
       "id": "usr_rizky",
       "fullName": "Rizky Pratama",
@@ -685,27 +662,23 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `409 CONFLICT`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `409`, `415`, `422`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/program-submissions/{submissionId}`
 
 Read an owned draft or submission, progress and attachment metadata.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Require submitter role and ownership; return 404 outside owner scope. Return current version and ETag, complete review notes, attachments, allowedActions and submissionIssues. Submitted identity, master labels and review plan use frozen snapshots.
 
-**Validation and business rules:** Return 404 for non-owned IDs. Review tasks include all stages for the progress/signature display; task eligibility is computed on the backend. Response ETag is the quoted parent version. Notes are owner-visible in this proposed contract (Q11).
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
 
 **Request body:** none.
 
-**Success: 200** — `SubmissionResponse`. Parent submission `ETag: "5"`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`.
 
 ```json
 {
@@ -713,7 +686,12 @@ Read an owned draft or submission, progress and attachment metadata.
     "id": "sub_0144",
     "programNumber": "PRG-2026-0144",
     "programName": "Bundling September Outlet BSD",
-    "programType": null,
+    "programType": {
+      "id": "typ_bundling",
+      "code": "bundling",
+      "name": "Bundling",
+      "isActive": true
+    },
     "locations": [
       {
         "id": "loc_bsd",
@@ -724,7 +702,10 @@ Read an owned draft or submission, progress and attachment metadata.
     ],
     "periodStart": "2026-09-06",
     "periodEnd": "2026-09-20",
-    "estimatedCost": null,
+    "estimatedCost": {
+      "currency": "IDR",
+      "amount": "42000000.00"
+    },
     "owner": {
       "id": "usr_rizky",
       "fullName": "Rizky Pratama",
@@ -821,45 +802,35 @@ Read an owned draft or submission, progress and attachment metadata.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `PATCH /api/v1/program-submissions/{submissionId}`
 
 Partially update an owned draft.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Require owner and draft status. PATCH omission preserves fields; null clears scalar/reference/cost fields; arrays replace selections. Empty PATCH is 422. Require nonblank names when supplied; start <= end; active assigned locations; eligible active reviewers. Costs are nonnegative exact IDR decimal strings with two digits after the decimal point. Reject unknown/server-owned fields. If-Match and version increment are atomic.
 
-**Validation and business rules:** Draft only; 409 SUBMISSION_LOCKED otherwise. Omitted fields unchanged; null clears scalar fields; arrays replace the entire selection and [] clears it. A non-null name must contain non-whitespace text. Provided dates must be real dates and start <= end when both present. Body cannot set status, checker, number, owner, type, cost or tasks. Validate IDs and configured reviewer limits. Atomic If-Match; increment version.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `If-Match` | header | yes | string; pattern=^"[1-9][0-9]*"$. Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
 
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `If-Match` | header | yes | string | Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
-
-**Required JSON request body:** `DraftUpdate`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `programName` | no | string; minLength=1; maxLength=200 or null |
-| `locationIds` | no | array<Id> (unique); max 100 |
-| `periodStart` | no | string (date) or null |
-| `periodEnd` | no | string (date) or null |
-| `acknowledgerIds` | no | array<Id> (unique); max 4 |
-| `approverIds` | no | array<Id> (unique); max 5 |
-
-Request example:
+**Request body:** application/json — `DraftUpdate`; see DTO fields below.
 
 ```json
 {
-  "programName": "Bundling September Outlet BSD"
+  "programName": "Bundling September Outlet BSD",
+  "programTypeId": "typ_bundling",
+  "estimatedCost": {
+    "currency": "IDR",
+    "amount": "42000000.00"
+  }
 }
 ```
 
-**Success: 200** — `SubmissionResponse`. Parent submission `ETag: "2"`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`.
 
 ```json
 {
@@ -867,7 +838,12 @@ Request example:
     "id": "sub_0144",
     "programNumber": "PRG-2026-0144",
     "programName": "Bundling September Outlet BSD",
-    "programType": null,
+    "programType": {
+      "id": "typ_bundling",
+      "code": "bundling",
+      "name": "Bundling",
+      "isActive": true
+    },
     "locations": [
       {
         "id": "loc_bsd",
@@ -878,7 +854,10 @@ Request example:
     ],
     "periodStart": "2026-09-06",
     "periodEnd": "2026-09-20",
-    "estimatedCost": null,
+    "estimatedCost": {
+      "currency": "IDR",
+      "amount": "42000000.00"
+    },
     "owner": {
       "id": "usr_rizky",
       "fullName": "Rizky Pratama",
@@ -933,27 +912,23 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `412 VERSION_CONFLICT`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `428 PRECONDITION_REQUIRED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `412`, `415`, `422`, `428`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/program-submissions/{submissionId}/policy`
 
 Load server-resolved checker, reviewer limits and upload constraints for this draft.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Owner scope. Resolve Checker from employee.checkerId, requiring an active checker role. routingConfigured reports only this mapping. Initial selected-reviewer limits follow the mockup: one to two Mengetahui and one to three Menyetujui. Return current supported extensions and 10,000,000-byte limit. Full submit blockers are on submission detail.
 
-**Validation and business rules:** Read only; derives context from the persisted draft locations and caller, so save locations before querying. Checker may be null when mapping is unresolved. routingConfigured describes whether checker routing is configured, not whether all business-policy questions are settled. It does not imply submit is allowed. Limits 2/3 reflect mockup defaults; configurable bounds 1..4/1..5. No management endpoint is specified.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
 
 **Request body:** none.
 
-**Success: 200** — `PolicyResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -971,7 +946,16 @@ Load server-resolved checker, reviewer limits and upload constraints for this dr
     "allowedAttachmentExtensions": [
       ".pdf",
       ".xls",
-      ".xlsx"
+      ".xlsx",
+      ".xlsm",
+      ".xlsb",
+      ".xlt",
+      ".xltx",
+      ".xltm",
+      ".xla",
+      ".xlam",
+      ".xlw",
+      ".xlm"
     ],
     "maxAttachmentBytes": 10000000,
     "routingConfigured": true
@@ -982,31 +966,27 @@ Load server-resolved checker, reviewer limits and upload constraints for this dr
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/program-submissions/{submissionId}/reviewer-options`
 
 List eligible reviewers for the selected draft and stage.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Owner scope. stage is required and must be acknowledgement or approval. Return active people with the matching role and an explicit ReviewerEligibility grant for this employee. Search fullName/jobTitle; this is not an employee directory. Selection array order becomes the sequential approval order.
 
-**Validation and business rules:** Only acknowledgement/approval are selectable; checker is server-assigned. Use authorized directory data, not arbitrary users. If the eligibility policy is unconfigured, return 409 REVIEWER_POLICY_UNRESOLVED; never expose an unrestricted directory. Active eligibility is rechecked on draft writes and submit. Ordering is fullName then id.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `page` | query | no | integer; minimum=1; default=1 | 1-based page. |
-| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20 | Items per page. |
-| `stage` | query | yes | string: `acknowledgement`, `approval` | Requested selectable stage. |
-| `q` | query | no | string; maxLength=100 | Case-insensitive substring of fullName/jobTitle. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `page` | query | no | integer; minimum=1; maximum=2147483647; default=1. 1-based page. |
+| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20. Items per page. |
+| `stage` | query | yes | string; enum=['acknowledgement', 'approval']. Requested selectable stage. |
+| `q` | query | no | string; minLength=1; maxLength=100. Case-insensitive substring of fullName/jobTitle. |
 
 **Request body:** none.
 
-**Success: 200** — `ReviewerListResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -1033,29 +1013,27 @@ List eligible reviewers for the selected draft and stage.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `422`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `POST /api/v1/program-submissions/{submissionId}/attachments`
 
 Upload one PDF/Excel attachment to an owned draft.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Owner and draft only. Exactly one multipart file, 1–10,000,000 bytes; require If-Match and Idempotency-Key. Validate supported PDF/Excel extension and container, bound expanded ZIP size to 100 MB and 10,000 entries, ignore claimed MIME. Store private random-key bytes with checksum; respond 202 pending. Worker scans with ClamAV before release. Encrypted/uninspectable files remain quarantined; malformed or infected documents are rejected. No macros or formulas execute. Fingerprint filename, detected MIME and SHA-256 for identical multipart retries. Pending/rejected attachments block submit until clean or removed.
 
-**Validation and business rules:** multipart/form-data with exactly one file part; no client storage URL. Enforce <= 10,000,000 bytes (A4), extension, detected format and authorization before accepting. Save quarantined attachment as pending, increment parent version and return 202. Scanner later marks clean/rejected and increments parent version again; read metadata to poll. No download or submit while pending/rejected files remain. Draft-only; atomically recheck version/status after streaming.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `If-Match` | header | yes | string; pattern=^"[1-9][0-9]*"$. Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
+| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128. Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
 
-**Path, query and operation headers** (Bearer header additionally applies where required):
+**Request body:** multipart/form-data — `MultipartUpload`; see DTO fields below.
 
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `If-Match` | header | yes | string | Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
-| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128 | Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
+One `file` part containing raw document bytes; the filename identifies the extension.
 
-**Required request body:** `multipart/form-data`; exactly one required binary `file` part, e.g. `Proposal Program.pdf` with `application/pdf` bytes. No JSON/base64 wrapper.
-
-**Success: 202** — `UploadResponse`. Parent submission `ETag: "3"`. `Location` points to the new draft or attachment metadata URI.
+**Success: 202.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`, `Location`.
 
 ```json
 {
@@ -1077,28 +1055,24 @@ Upload one PDF/Excel attachment to an owned draft.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `412 VERSION_CONFLICT`; `413 PAYLOAD_TOO_LARGE`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `428 PRECONDITION_REQUIRED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `412`, `413`, `415`, `422`, `428`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/program-submissions/{submissionId}/attachments/{attachmentId}`
 
 Read attachment metadata and scan status.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Owner scope and matching, nonremoved attachment. Metadata can be read while pending or rejected; internal storage paths, hashes and scanner diagnostics are never returned.
 
-**Validation and business rules:** Authorize parent and verify attachment belongs to it; removed attachments return 404. Does not expose object storage keys or scan internals. This metadata GET has no ETag; fetch parent detail for its current version.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `attachmentId` | path | yes | Id | Immutable attachmentId. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `attachmentId` | path | yes | Id. Immutable attachmentId. |
 
 **Request body:** none.
 
-**Success: 200** — `AttachmentResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -1117,30 +1091,26 @@ Read attachment metadata and scan status.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `DELETE /api/v1/program-submissions/{submissionId}/attachments/{attachmentId}`
 
 Remove an attachment from an owned draft.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Owner and draft only; no body. Require parent If-Match and Idempotency-Key. Soft-remove attachment and increment parent version atomically. Replaying the same request returns its original success. Removed bytes remain private pending a retention policy; no download remains available.
 
-**Validation and business rules:** Draft only; remove the association and increment parent version atomically. Blob cleanup follows retention policy. Exact retries with same idempotency key return original result; a removed ID with a different key returns 404. Never remove historical submitted documents through this operation.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `attachmentId` | path | yes | Id | Immutable attachmentId. |
-| `If-Match` | header | yes | string | Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
-| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128 | Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `attachmentId` | path | yes | Id. Immutable attachmentId. |
+| `If-Match` | header | yes | string; pattern=^"[1-9][0-9]*"$. Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
+| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128. Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
 
 **Request body:** none.
 
-**Success: 200** — `RemovalResponse`. Parent submission `ETag: "4"`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`.
 
 ```json
 {
@@ -1155,106 +1125,70 @@ Remove an attachment from an owned draft.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `412 VERSION_CONFLICT`; `428 PRECONDITION_REQUIRED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `412`, `428`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/program-submissions/{submissionId}/attachments/{attachmentId}/content`
 
 Download an authorized, clean attachment.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Owner scope and matching, nonremoved, clean attachment. Otherwise 404 outside scope or 409 ATTACHMENT_NOT_READY. Stream bytes with Content-Disposition: attachment and detected MIME; audit the download. Missing storage returns 503.
 
-**Validation and business rules:** Authorize parent on every request and ensure attachment membership. Only clean files; pending/rejected => 409 ATTACHMENT_NOT_READY. Stream from private storage with sanitized Content-Disposition: attachment and nosniff. No public or permanent URL.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `attachmentId` | path | yes | Id | Immutable attachmentId. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `attachmentId` | path | yes | Id. Immutable attachmentId. |
 
 **Request body:** none.
 
-**Success: 200** — raw document bytes; JSON success intentionally does not apply.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `Content-Disposition`.
 
-```http
-HTTP/1.1 200 OK
-Content-Type: application/pdf
-Content-Disposition: attachment; filename="Proposal Program.pdf"
-X-Content-Type-Options: nosniff
-Cache-Control: no-store
-X-Request-Id: req_01salesdesign
+Binary `application/octet-stream` response; no JSON envelope.
 
-%PDF-1.7 ... document bytes ...
-```
-
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/program-submissions/{submissionId}/pdf`
 
 Render a printable submission form from a consistent saved snapshot.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Owner scope. Generate application/pdf from a consistent saved form, escaped text, all review notes, statuses and event-bound account signature images. Draft PDF is unsigned and marked draft. Submit freezes proposer signature; each approve freezes that reviewer signature. Missing/corrupt historical signature bytes fail closed with 503. Does not expose raw signature assets or claim certificate-based digital signing.
 
-**Validation and business rules:** PDF is an output recommendation (A5); mockup uses window.print(). Render saved fields, all selected reviewers and recorded decisions, marking draft/pending clearly. A visual approval stamp is not a cryptographic signature. Do not embed attachment bytes. Authorize before rendering; missing template configuration => 503.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
 
 **Request body:** none.
 
-**Success: 200** — raw document bytes; JSON success intentionally does not apply.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `Content-Disposition`.
 
-```http
-HTTP/1.1 200 OK
-Content-Type: application/pdf
-Content-Disposition: attachment; filename="submission.pdf"
-X-Content-Type-Options: nosniff
-Cache-Control: no-store
-X-Request-Id: req_01salesdesign
+Binary `application/pdf` response; no JSON envelope.
 
-%PDF-1.7 ... document bytes ...
-```
-
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `POST /api/v1/program-submissions/{submissionId}/submit`
 
 Freeze draft content and start the review chain.
 
-**Contract:** Provisional — Q2, Q3, Q4, Q5, Q6; illustrative only, excluded from OpenAPI paths.
+**Allowed roles:** submitter (owner)
 
-**Allowed roles:** submitter (owner).
+**Validation and business rules:** Owner and draft only; require If-Match and Idempotency-Key. Require name, at least one active assigned location, both ordered dates, active Checker mapping, one to two eligible Mengetahui and one to three eligible Menyetujui. Attachments are optional; every retained attachment must be clean. Require provisioned proposer signature. Snapshot identity, master labels, routing, policy and signature; create ordered tasks and activate Checker only. Multiple people approve sequentially. Missing type/cost is blocked with 409 WORKFLOW_POLICY_UNRESOLVED until requiredness is configured; complete values work now. Unconfirmed self-approval/cross-stage duplicates block submit. No automatic reassignment or revision.
 
-**Validation and business rules:** PROVISIONAL Q2–Q6. Validate required name, >=1 location, complete ordered dates, >=1 acknowledger and >=1 approver within policy, resolved checker, eligible reviewers and clean retained files. Attachment minimum and type/cost requirements remain unresolved. Snapshot policy/people/content and create tasks atomically; status becomes pendingChecker. Current example assumes one person per stage and a confirmed policy; no multi-person quorum is implied. Block 409 WORKFLOW_POLICY_UNRESOLVED until applicable rules are configured.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `If-Match` | header | yes | string; pattern=^"[1-9][0-9]*"$. Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
+| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128. Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
 
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `If-Match` | header | yes | string | Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
-| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128 | Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
-
-**Required JSON request body:** `EmptyRequest`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| — | — | Empty object only |
-
-Request example:
+**Request body:** application/json — `EmptyRequest`; see DTO fields below.
 
 ```json
 {}
 ```
 
-**Success: 200** — `SubmissionResponse`. Parent submission `ETag: "5"`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`.
 
 ```json
 {
@@ -1262,7 +1196,12 @@ Request example:
     "id": "sub_0144",
     "programNumber": "PRG-2026-0144",
     "programName": "Bundling September Outlet BSD",
-    "programType": null,
+    "programType": {
+      "id": "typ_bundling",
+      "code": "bundling",
+      "name": "Bundling",
+      "isActive": true
+    },
     "locations": [
       {
         "id": "loc_bsd",
@@ -1273,7 +1212,10 @@ Request example:
     ],
     "periodStart": "2026-09-06",
     "periodEnd": "2026-09-20",
-    "estimatedCost": null,
+    "estimatedCost": {
+      "currency": "IDR",
+      "amount": "42000000.00"
+    },
     "owner": {
       "id": "usr_rizky",
       "fullName": "Rizky Pratama",
@@ -1370,33 +1312,23 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `412 VERSION_CONFLICT`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `428 PRECONDITION_REQUIRED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `412`, `415`, `422`, `428`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `POST /api/v1/program-submissions/{submissionId}/cancel`
 
-Candidate withdrawal action; the mockup has no cancellation flow.
+Cancel an owned program when its source state is explicitly authorized.
 
-**Contract:** Provisional — Q7; illustrative only, excluded from OpenAPI paths.
+**Allowed roles:** submitter (owner) only
 
-**Allowed roles:** Proposed: submitter (owner); not yet authorized by business policy.
+**Validation and business rules:** Proposer only. Implemented but disabled by an empty cancellation-state allowlist until R7 is answered. Returns 409 WORKFLOW_POLICY_UNRESOLVED in the initial configuration. When authorized states are configured, require If-Match, Idempotency-Key and a nonblank reason (provisional requirement), set cancelled, close the submission and void remaining tasks atomically. Keep files/history private and immutable. The success example assumes draft cancellation has explicitly been enabled; it is not the initial behavior.
 
-**Validation and business rules:** PROVISIONAL Q7. Example illustrates only draft -> cancelled with a reason; it is not an approved rule. Do not treat the modal Batal button as this endpoint: Batal dismisses the modal without a request. Post-submit cancellation, approver/admin power, retention and pending-task invalidation require a decision. If enabled, apply status/version validation and audit atomically; no hard deletion.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `If-Match` | header | yes | string; pattern=^"[1-9][0-9]*"$. Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
+| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128. Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
 
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `If-Match` | header | yes | string | Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
-| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128 | Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
-
-**Required JSON request body:** `CancelRequest`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `reason` | yes | string; minLength=1; maxLength=2000 |
-
-Request example:
+**Request body:** application/json — `CancelRequest`; see DTO fields below.
 
 ```json
 {
@@ -1404,7 +1336,7 @@ Request example:
 }
 ```
 
-**Success: 200** — `SubmissionResponse`. Parent submission `ETag: "2"`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`.
 
 ```json
 {
@@ -1412,7 +1344,12 @@ Request example:
     "id": "sub_0144",
     "programNumber": "PRG-2026-0144",
     "programName": "Bundling Idul Adha Outlet BSD",
-    "programType": null,
+    "programType": {
+      "id": "typ_bundling",
+      "code": "bundling",
+      "name": "Bundling",
+      "isActive": true
+    },
     "locations": [
       {
         "id": "loc_bsd",
@@ -1423,7 +1360,10 @@ Request example:
     ],
     "periodStart": "2026-09-06",
     "periodEnd": "2026-09-20",
-    "estimatedCost": null,
+    "estimatedCost": {
+      "currency": "IDR",
+      "amount": "42000000.00"
+    },
     "owner": {
       "id": "usr_rizky",
       "fullName": "Rizky Pratama",
@@ -1470,7 +1410,7 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `412 VERSION_CONFLICT`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `428 PRECONDITION_REQUIRED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `412`, `415`, `422`, `428`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 ### Backoffice
 
@@ -1478,101 +1418,71 @@ Request example:
 
 Download an authorized, clean attachment.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** checker / acknowledger / approver with a current ready OR completed approved/rejected task assigned to them
 
-**Allowed roles:** checker / acknowledger / approver (current ready task assignee).
+**Validation and business rules:** Require matching reviewer role and a ready or completed approved/rejected task on the parent. Waiting/voided-only assignments confer no access. File must belong to parent, be nonremoved and clean. Stream as attachment and audit; 409 while unready, 404 outside scope, 503 when storage is unavailable.
 
-**Validation and business rules:** Authorize parent on every request and ensure attachment membership. Only clean files; pending/rejected => 409 ATTACHMENT_NOT_READY. Stream from private storage with sanitized Content-Disposition: attachment and nosniff. No public or permanent URL.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `attachmentId` | path | yes | Id | Immutable attachmentId. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `attachmentId` | path | yes | Id. Immutable attachmentId. |
 
 **Request body:** none.
 
-**Success: 200** — raw document bytes; JSON success intentionally does not apply.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `Content-Disposition`.
 
-```http
-HTTP/1.1 200 OK
-Content-Type: application/pdf
-Content-Disposition: attachment; filename="Proposal Program.pdf"
-X-Content-Type-Options: nosniff
-Cache-Control: no-store
-X-Request-Id: req_01salesdesign
+Binary `application/octet-stream` response; no JSON envelope.
 
-%PDF-1.7 ... document bytes ...
-```
-
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/backoffice/program-submissions/{submissionId}/pdf`
 
 Render a printable submission form from a consistent saved snapshot.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** checker / acknowledger / approver with a current ready OR completed approved/rejected task assigned to them
 
-**Allowed roles:** checker / acknowledger / approver (current ready task assignee).
+**Validation and business rules:** Current ready or completed approved/rejected task assignee with matching role. Generate the same saved form and every review note with event-bound signature images; task state distinguishes approved/rejected/waiting. Missing signature storage returns 503; no global administrator bypass.
 
-**Validation and business rules:** PDF is an output recommendation (A5); mockup uses window.print(). Render saved fields, all selected reviewers and recorded decisions, marking draft/pending clearly. A visual approval stamp is not a cryptographic signature. Do not embed attachment bytes. Authorize before rendering; missing template configuration => 503.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
 
 **Request body:** none.
 
-**Success: 200** — raw document bytes; JSON success intentionally does not apply.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `Content-Disposition`.
 
-```http
-HTTP/1.1 200 OK
-Content-Type: application/pdf
-Content-Disposition: attachment; filename="submission.pdf"
-X-Content-Type-Options: nosniff
-Cache-Control: no-store
-X-Request-Id: req_01salesdesign
+Binary `application/pdf` response; no JSON envelope.
 
-%PDF-1.7 ... document bytes ...
-```
-
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/backoffice/program-submissions`
 
 List submissions with a current ready review task assigned to the caller.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** checker / acknowledger / approver
 
-**Allowed roles:** checker / acknowledger / approver.
+**Validation and business rules:** Require checker, acknowledger or approver role. Inbox contains only submissions where the caller has a ready task in that matching role. Waiting tasks and another reviewer’s tasks confer no access. Search/filter/sort operate only within this scope; one submission per result.
 
-**Validation and business rules:** Use EXISTS over ready tasks to avoid duplicate submissions. Role alone is insufficient. Previous/future assignments and completed submissions do not enter this inbox. backofficeAdmin alone confers no access; Q8 must settle broader visibility. Period filter explicitly targets execution start date as a proposed convention (A2).
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `page` | query | no | integer; minimum=1; default=1 | 1-based page. |
-| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20 | Items per page. |
-| `q` | query | no | string; maxLength=100 | Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax. |
-| `programNumber` | query | no | string; maxLength=64 | Exact program number; combines with q using AND. |
-| `status` | query | no | array<SubmissionStatus> (unique); max 7 | Repeat key for multiple statuses; OR within this filter. |
-| `locationId` | query | no | array<Id> (unique); max 100 | Repeat key; submission must match at least one selected location. |
-| `programTypeId` | query | no | Id | Exact type ID; submissions with unknown type do not match. |
-| `periodStartFrom` | query | no | string (date) | Inclusive lower bound on execution periodStart; not submittedAt. |
-| `periodStartTo` | query | no | string (date) | Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound. |
-| `ownerId` | query | no | Id | Exact submitter ID. |
-| `checkerId` | query | no | array<Id> (unique); max 100 | Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
-| `acknowledgerId` | query | no | array<Id> (unique); max 100 | Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
-| `approverId` | query | no | array<Id> (unique); max 100 | Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
-| `sort` | query | no | string: `-createdAt`, `createdAt`, `-updatedAt`, `updatedAt`, `programNumber`; default=-createdAt | Default -createdAt; append id ascending internally as a stable tie-breaker. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `page` | query | no | integer; minimum=1; maximum=2147483647; default=1. 1-based page. |
+| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20. Items per page. |
+| `q` | query | no | string; minLength=1; maxLength=100. Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax. |
+| `programNumber` | query | no | string; maxLength=200. Exact program number; combines with q using AND. |
+| `status` | query | no | array of SubmissionStatus; maxItems=100. Repeat key for multiple statuses; OR within this filter. |
+| `locationId` | query | no | array of Id; maxItems=100. Repeat key; submission must match at least one selected location. |
+| `programTypeId` | query | no | Id. Exact type ID; submissions with unknown type do not match. |
+| `periodStartFrom` | query | no | string. Inclusive lower bound on execution periodStart; not submittedAt. |
+| `periodStartTo` | query | no | string. Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound. |
+| `ownerId` | query | no | Id. Exact submitter ID. |
+| `checkerId` | query | no | array of Id; maxItems=100. Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
+| `acknowledgerId` | query | no | array of Id; maxItems=100. Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
+| `approverId` | query | no | array of Id; maxItems=100. Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
+| `sort` | query | no | string; enum=['-createdAt', 'createdAt', '-updatedAt', 'updatedAt', 'programNumber']; default=-createdAt. Default -createdAt; append id ascending internally as a stable tie-breaker. |
 
 **Request body:** none.
 
-**Success: 200** — `SubmissionListResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -1581,7 +1491,12 @@ List submissions with a current ready review task assigned to the caller.
       "id": "sub_0144",
       "programNumber": "PRG-2026-0144",
       "programName": "Bundling September Outlet BSD",
-      "programType": null,
+      "programType": {
+        "id": "typ_bundling",
+        "code": "bundling",
+        "name": "Bundling",
+        "isActive": true
+      },
       "locations": [
         {
           "id": "loc_bsd",
@@ -1592,7 +1507,10 @@ List submissions with a current ready review task assigned to the caller.
       ],
       "periodStart": "2026-09-06",
       "periodEnd": "2026-09-20",
-      "estimatedCost": null,
+      "estimatedCost": {
+        "currency": "IDR",
+        "amount": "42000000.00"
+      },
       "owner": {
         "id": "usr_rizky",
         "fullName": "Rizky Pratama",
@@ -1620,27 +1538,106 @@ List submissions with a current ready review task assigned to the caller.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `422`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
+
+#### `GET /api/v1/backoffice/review-history`
+
+List the caller’s completed review assignments on a separate history page.
+
+**Allowed roles:** checker / acknowledger / approver
+
+**Validation and business rules:** Require reviewer role. Include submissions with a completed approved/rejected task assigned to caller in that matching role, even if the program is still awaiting others. Waiting/voided tasks alone are excluded. Shared detail remains readable, with all review notes; only genuinely ready tasks may be acted on.
+
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `page` | query | no | integer; minimum=1; maximum=2147483647; default=1. 1-based page. |
+| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20. Items per page. |
+| `q` | query | no | string; minLength=1; maxLength=100. Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax. |
+| `programNumber` | query | no | string; maxLength=200. Exact program number; combines with q using AND. |
+| `status` | query | no | array of SubmissionStatus; maxItems=100. Repeat key for multiple statuses; OR within this filter. |
+| `locationId` | query | no | array of Id; maxItems=100. Repeat key; submission must match at least one selected location. |
+| `programTypeId` | query | no | Id. Exact type ID; submissions with unknown type do not match. |
+| `periodStartFrom` | query | no | string. Inclusive lower bound on execution periodStart; not submittedAt. |
+| `periodStartTo` | query | no | string. Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound. |
+| `ownerId` | query | no | Id. Exact submitter ID. |
+| `checkerId` | query | no | array of Id; maxItems=100. Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
+| `acknowledgerId` | query | no | array of Id; maxItems=100. Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
+| `approverId` | query | no | array of Id; maxItems=100. Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
+| `sort` | query | no | string; enum=['-createdAt', 'createdAt', '-updatedAt', 'updatedAt', 'programNumber']; default=-createdAt. Default -createdAt; append id ascending internally as a stable tie-breaker. |
+
+**Request body:** none.
+
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
+
+```json
+{
+  "data": [
+    {
+      "id": "sub_0144",
+      "programNumber": "PRG-2026-0144",
+      "programName": "Bundling September Outlet BSD",
+      "programType": {
+        "id": "typ_bundling",
+        "code": "bundling",
+        "name": "Bundling",
+        "isActive": true
+      },
+      "locations": [
+        {
+          "id": "loc_bsd",
+          "code": "BSD",
+          "name": "BSD",
+          "isActive": true
+        }
+      ],
+      "periodStart": "2026-09-06",
+      "periodEnd": "2026-09-20",
+      "estimatedCost": {
+        "currency": "IDR",
+        "amount": "42000000.00"
+      },
+      "owner": {
+        "id": "usr_rizky",
+        "fullName": "Rizky Pratama",
+        "jobTitle": "Sales Executive"
+      },
+      "status": "approved",
+      "currentStage": null,
+      "createdAt": "2026-08-21T03:00:00Z",
+      "updatedAt": "2026-08-24T03:00:00Z",
+      "submittedAt": "2026-08-21T03:10:00Z",
+      "version": 8,
+      "myActiveTaskIds": []
+    }
+  ],
+  "meta": {
+    "requestId": "req_01salesdesign",
+    "page": 1,
+    "pageSize": 20,
+    "totalItems": 1,
+    "totalPages": 1,
+    "hasNextPage": false
+  }
+}
+```
+
+**Possible errors:** `400`, `401`, `403`, `422`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/backoffice/program-submissions/{submissionId}`
 
 Read submission details for a current task, including progress and decision targets.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** checker / acknowledger / approver with a current ready task OR a completed approved/rejected task assigned to them
 
-**Allowed roles:** checker / acknowledger / approver (current ready task assignee).
+**Validation and business rules:** Require matching reviewer role and a ready or completed approved/rejected task assigned to caller. Return 404 otherwise. Completed participants retain read access to all notes through later stages; completed tasks do not grant decision authority. No staff/superuser/global-admin bypass.
 
-**Validation and business rules:** Enforce ready-task assignment, not global admin status; 404 outside scope. myActiveTaskIds and ready tasks identify taskId for the candidate decision endpoints. After acting, refresh the inbox; do not assume continued access to the detail (Q8). This read contract can expose existing state while transition operations remain provisional.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
 
 **Request body:** none.
 
-**Success: 200** — `SubmissionResponse`. Parent submission `ETag: "5"`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`.
 
 ```json
 {
@@ -1648,7 +1645,12 @@ Read submission details for a current task, including progress and decision targ
     "id": "sub_0144",
     "programNumber": "PRG-2026-0144",
     "programName": "Bundling September Outlet BSD",
-    "programType": null,
+    "programType": {
+      "id": "typ_bundling",
+      "code": "bundling",
+      "name": "Bundling",
+      "isActive": true
+    },
     "locations": [
       {
         "id": "loc_bsd",
@@ -1659,7 +1661,10 @@ Read submission details for a current task, including progress and decision targ
     ],
     "periodStart": "2026-09-06",
     "periodEnd": "2026-09-20",
-    "estimatedCost": null,
+    "estimatedCost": {
+      "currency": "IDR",
+      "amount": "42000000.00"
+    },
     "owner": {
       "id": "usr_rizky",
       "fullName": "Rizky Pratama",
@@ -1760,30 +1765,27 @@ Read submission details for a current task, including progress and decision targ
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/backoffice/filter-options/people`
 
 Populate submitter and reviewer person filters without an unrestricted directory.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** checker / acknowledger / approver
 
-**Allowed roles:** checker / acknowledger / approver.
+**Validation and business rules:** Require reviewer role. field selects owner/checker/acknowledger/approver, scope selects inbox/history. Only people attached to the caller’s scoped submissions appear. Search fullName/jobTitle. Never exposes the global employee directory.
 
-**Validation and business rules:** Return distinct people referenced in submissions in the caller current inbox, before optional filters. field selects owner/checker/acknowledger/approver. Names and job title only; no email or employee number. Same role and assignment scope as inbox.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `page` | query | no | integer; minimum=1; default=1 | 1-based page. |
-| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20 | Items per page. |
-| `field` | query | yes | string: `owner`, `checker`, `acknowledger`, `approver` | Which relationship supplies people. |
-| `q` | query | no | string; maxLength=100 | Case-insensitive substring of fullName/jobTitle. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `page` | query | no | integer; minimum=1; maximum=2147483647; default=1. 1-based page. |
+| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20. Items per page. |
+| `field` | query | yes | string; enum=['owner', 'checker', 'acknowledger', 'approver']. Which relationship supplies people. |
+| `q` | query | no | string; minLength=1; maxLength=100. Case-insensitive substring of fullName/jobTitle. |
+| `scope` | query | no | string; enum=['inbox', 'history']; default=inbox. Choose the authorized current-work or completed-assignment dataset for filter options. |
 
 **Request body:** none.
 
-**Success: 200** — `FilterPersonListResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -1805,34 +1807,24 @@ Populate submitter and reviewer person filters without an unrestricted directory
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `422`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `POST /api/v1/backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/approve`
 
 Record approval for exactly one assigned review task.
 
-**Contract:** Provisional — Q3, Q4; illustrative only, excluded from OpenAPI paths.
+**Allowed roles:** Current ready task assignee with matching checker / acknowledger / approver role
 
-**Allowed roles:** Active assignee with matching checker / acknowledger / approver role; rejection authority by stage unresolved.
+**Validation and business rules:** Require task-parent match, current ready assignee and matching reviewer role. If-Match and Idempotency-Key protect the atomic transition. Provisioned account signature is required and snapshotted with decision time and optional note. Advance one person at a time, first Checker, then all Mengetahui, then all Menyetujui. Final approval closes program as approved. Tasks and submitted content cannot be edited. Backend owns next status; actor/status/signature bytes are not accepted in body.
 
-**Validation and business rules:** PROVISIONAL Q3/Q4. Validate parent membership, active assignment, ready status and optimistic version in one transaction. Note is optional and <=2000 characters, matching the modal. Never accept actor, role, nextStatus or timestamps from Flutter. One immutable decision per task. Approve advances only when the confirmed stage completion rule is met; reject termination semantics need confirmation. Example is the sole final approver at version 7; approve/reject examples are alternative outcomes, not sequential calls. Completed decisions cannot be edited.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `taskId` | path | yes | Id. Immutable taskId. |
+| `If-Match` | header | yes | string; pattern=^"[1-9][0-9]*"$. Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
+| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128. Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
 
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `taskId` | path | yes | Id | Immutable taskId. |
-| `If-Match` | header | yes | string | Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
-| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128 | Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
-
-**Required JSON request body:** `DecisionRequest`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `note` | no | string; maxLength=2000 or null |
-
-Request example:
+**Request body:** application/json — `DecisionRequest`; see DTO fields below.
 
 ```json
 {
@@ -1840,7 +1832,7 @@ Request example:
 }
 ```
 
-**Success: 200** — `SubmissionResponse`. Parent submission `ETag: "8"`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`.
 
 ```json
 {
@@ -1848,7 +1840,12 @@ Request example:
     "id": "sub_0144",
     "programNumber": "PRG-2026-0144",
     "programName": "Bundling September Outlet BSD",
-    "programType": null,
+    "programType": {
+      "id": "typ_bundling",
+      "code": "bundling",
+      "name": "Bundling",
+      "isActive": true
+    },
     "locations": [
       {
         "id": "loc_bsd",
@@ -1859,7 +1856,10 @@ Request example:
     ],
     "periodStart": "2026-09-06",
     "periodEnd": "2026-09-20",
-    "estimatedCost": null,
+    "estimatedCost": {
+      "currency": "IDR",
+      "amount": "42000000.00"
+    },
     "owner": {
       "id": "usr_rizky",
       "fullName": "Rizky Pratama",
@@ -1956,34 +1956,24 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `412 VERSION_CONFLICT`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `428 PRECONDITION_REQUIRED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `412`, `415`, `422`, `428`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `POST /api/v1/backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/reject`
 
 Record rejection for exactly one assigned review task.
 
-**Contract:** Provisional — Q3, Q4; illustrative only, excluded from OpenAPI paths.
+**Allowed roles:** Current ready task assignee with matching checker / acknowledger / approver role; proposer excluded
 
-**Allowed roles:** Active assignee with matching checker / acknowledger / approver role; rejection authority by stage unresolved.
+**Validation and business rules:** Require task-parent match, current ready assignee and matching reviewer role. Proposer rejection is forbidden even with a reviewer role. Require If-Match and Idempotency-Key. Any rejection immediately closes the submission as rejected and voids every remaining task. Optional note is visible to every authorized participant; no signature is applied as an approval. Rejected programs cannot be edited/resubmitted through this API; any future revision flow is deferred.
 
-**Validation and business rules:** PROVISIONAL Q3/Q4. Validate parent membership, active assignment, ready status and optimistic version in one transaction. Note is optional and <=2000 characters, matching the modal. Never accept actor, role, nextStatus or timestamps from Flutter. One immutable decision per task. Approve advances only when the confirmed stage completion rule is met; reject termination semantics need confirmation. Example is the sole final approver at version 7; approve/reject examples are alternative outcomes, not sequential calls. Completed decisions cannot be edited.
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `submissionId` | path | yes | Id. Immutable submissionId. |
+| `taskId` | path | yes | Id. Immutable taskId. |
+| `If-Match` | header | yes | string; pattern=^"[1-9][0-9]*"$. Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
+| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128. Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
 
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `submissionId` | path | yes | Id | Immutable submissionId. |
-| `taskId` | path | yes | Id | Immutable taskId. |
-| `If-Match` | header | yes | string | Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent submission version. |
-| `Idempotency-Key` | header | yes | string; minLength=16; maxLength=128 | Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours. |
-
-**Required JSON request body:** `DecisionRequest`.
-
-| Field | Required | Type / constraints |
-| --- | --- | --- |
-| `note` | no | string; maxLength=2000 or null |
-
-Request example:
+**Request body:** application/json — `DecisionRequest`; see DTO fields below.
 
 ```json
 {
@@ -1991,7 +1981,7 @@ Request example:
 }
 ```
 
-**Success: 200** — `SubmissionResponse`. Parent submission `ETag: "8"`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`, `ETag`.
 
 ```json
 {
@@ -1999,7 +1989,12 @@ Request example:
     "id": "sub_0144",
     "programNumber": "PRG-2026-0144",
     "programName": "Bundling September Outlet BSD",
-    "programType": null,
+    "programType": {
+      "id": "typ_bundling",
+      "code": "bundling",
+      "name": "Bundling",
+      "isActive": true
+    },
     "locations": [
       {
         "id": "loc_bsd",
@@ -2010,7 +2005,10 @@ Request example:
     ],
     "periodStart": "2026-09-06",
     "periodEnd": "2026-09-20",
-    "estimatedCost": null,
+    "estimatedCost": {
+      "currency": "IDR",
+      "amount": "42000000.00"
+    },
     "owner": {
       "id": "usr_rizky",
       "fullName": "Rizky Pratama",
@@ -2107,57 +2105,7 @@ Request example:
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `404 NOT_FOUND`; `409 CONFLICT`; `412 VERSION_CONFLICT`; `415 UNSUPPORTED_MEDIA_TYPE`; `422 VALIDATION_FAILED`; `428 PRECONDITION_REQUIRED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
-
-#### `GET /api/v1/backoffice/dashboard-summary`
-
-Candidate summary of the caller current review workload.
-
-**Contract:** Provisional — Q9; illustrative only, excluded from OpenAPI paths.
-
-**Allowed roles:** Proposed: checker / acknowledger / approver in current-task scope.
-
-**Validation and business rules:** PROVISIONAL Q9. No dashboard metrics are designed; one annotated older screenshot only shows a Dashboard navigation label. Proposed counts use the same current-task scope and domain filters as the inbox, without pagination/sort. Count distinct submissions once in total and their current stage once; no budget totals, fiscal periods or organization-wide access are implied. Example counts one pendingChecker submission.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `q` | query | no | string; maxLength=100 | Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax. |
-| `programNumber` | query | no | string; maxLength=64 | Exact program number; combines with q using AND. |
-| `status` | query | no | array<SubmissionStatus> (unique); max 7 | Repeat key for multiple statuses; OR within this filter. |
-| `locationId` | query | no | array<Id> (unique); max 100 | Repeat key; submission must match at least one selected location. |
-| `programTypeId` | query | no | Id | Exact type ID; submissions with unknown type do not match. |
-| `periodStartFrom` | query | no | string (date) | Inclusive lower bound on execution periodStart; not submittedAt. |
-| `periodStartTo` | query | no | string (date) | Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound. |
-| `ownerId` | query | no | Id | Exact submitter ID. |
-| `checkerId` | query | no | array<Id> (unique); max 100 | Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
-| `acknowledgerId` | query | no | array<Id> (unique); max 100 | Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
-| `approverId` | query | no | array<Id> (unique); max 100 | Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller scope. |
-
-**Request body:** none.
-
-**Success: 200** — `DashboardResponse`.
-
-```json
-{
-  "data": {
-    "scope": "myActiveTasks",
-    "generatedAt": "2026-08-21T03:00:00Z",
-    "totalSubmissions": 1,
-    "byStage": {
-      "checker": 1,
-      "acknowledgement": 0,
-      "approval": 0
-    }
-  },
-  "meta": {
-    "requestId": "req_01salesdesign"
-  }
-}
-```
-
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `422 VALIDATION_FAILED`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `404`, `409`, `412`, `415`, `422`, `428`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 ### Master data
 
@@ -2165,23 +2113,19 @@ Candidate summary of the caller current review workload.
 
 List locations the caller may select.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** Any active authenticated role
 
-**Allowed roles:** Any active authenticated role.
+**Validation and business rules:** Return only active locations explicitly assigned to this account. Search code/name. Location values are master records, not permanent enums.
 
-**Validation and business rules:** Return active authorized locations only; BSD and Bekasi are seed examples, not a permanent enum. q searches code/name. Server applies organizational scope before pagination.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `page` | query | no | integer; minimum=1; default=1 | 1-based page. |
-| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20 | Items per page. |
-| `q` | query | no | string; maxLength=100 | Case-insensitive literal substring of location code/name. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `page` | query | no | integer; minimum=1; maximum=2147483647; default=1. 1-based page. |
+| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20. Items per page. |
+| `q` | query | no | string; minLength=1; maxLength=100. Case-insensitive literal substring of location code/name. |
 
 **Request body:** none.
 
-**Success: 200** — `LocationListResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -2204,29 +2148,25 @@ List locations the caller may select.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
 #### `GET /api/v1/master-data/program-types`
 
-List program types used by read-only filters.
+List active program types for draft selection and filters.
 
-**Contract:** Specified in OpenAPI.
+**Allowed roles:** Any active authenticated role
 
-**Allowed roles:** Any active authenticated role.
+**Validation and business rules:** Return active program types, searchable by code/name. Proposer selects a type when editing a draft. No master-data write API is exposed.
 
-**Validation and business rules:** Diskon and Bundling are observed values. This endpoint does not settle who assigns a submission type (Q5); type is not writable in draft requests. Return active types; old submissions retain snapshots of inactive types.
-
-**Path, query and operation headers** (Bearer header additionally applies where required):
-
-| Name | In | Required | Type / constraints | Meaning |
-| --- | --- | --- | --- | --- |
-| `page` | query | no | integer; minimum=1; default=1 | 1-based page. |
-| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20 | Items per page. |
-| `q` | query | no | string; maxLength=100 | Case-insensitive literal substring of type code/name. |
+| Parameter | In | Required | Constraints / meaning |
+| --- | --- | --- | --- |
+| `page` | query | no | integer; minimum=1; maximum=2147483647; default=1. 1-based page. |
+| `pageSize` | query | no | integer; minimum=1; maximum=100; default=20. Items per page. |
+| `q` | query | no | string; minLength=1; maxLength=100. Case-insensitive literal substring of type code/name. |
 
 **Request body:** none.
 
-**Success: 200** — `ProgramTypeListResponse`.
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
 ```json
 {
@@ -2255,63 +2195,326 @@ List program types used by read-only filters.
 }
 ```
 
-**Possible errors:** `400 BAD_REQUEST`; `401 UNAUTHENTICATED`; `403 FORBIDDEN`; `429 RATE_LIMITED`; `500 INTERNAL_ERROR`; `503 SERVICE_UNAVAILABLE`. All use `Error` (section 6); endpoint-specific conflict codes appear in the rules.
+**Possible errors:** `400`, `401`, `403`, `429`, `500`, `503`, `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
-## 8. Minimum security and upload handling
+### Health
 
-Use TLS for every API/document request; never place passwords/tokens in URLs or logs. For the proposed password flow, hash passwords with a contemporary password-hashing algorithm such as Argon2id with deployment-calibrated cost. Permit long passwords, reject compromised/common passwords, throttle login/registration by account and network without enabling trivial permanent lockout, and use generic authentication failures. Employee number or a corporate-looking email is not proof of employment. No registration may grant privileged roles. MFA/SSO and recovery remain Q1/Q10. See [OWASP Authentication guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html).
+#### `GET /api/v1/health/live`
 
-Recommend opaque access tokens with 15-minute expiry and rotating refresh families with 30-day absolute expiry (A3). Persist token hashes; revoke families on logout, reuse or account disable. Enforce expiry and current authorization on each request, including document downloads. Keep Flutter native refresh credentials in OS secure storage and access tokens in memory where practical. Serialize token refresh. Flutter web requires a separately confirmed HttpOnly/Secure cookie and CSRF strategy before deployment; do not copy native body-token storage into browser localStorage. Session/device limit and timeout policy require Q10. See [OWASP Session Management guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
+Check application liveness.
 
-Required upload flow: create/save draft → multipart upload → receive 202 with attachment ID/scanStatus → poll metadata (start around 2 seconds, back off, stop on leaving screen) → use clean attachment → submit when policy allows. Files are stored outside public web access with unpredictable internal keys. Check extension, MIME and content signatures; do not trust filename or Content-Type alone. Bound streamed bytes and decompressed Excel archives. Reject encrypted/uninspectable or unsafe documents rather than bypass scanning. Malware-scan in quarantine and mark rejected on failure; scanner outage leaves pending. Downloads stream only clean files after authorization. Use sanitized filenames and attachment disposition; no executable rendering or Excel macro execution. See [OWASP File Upload guidance](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html).
+**Allowed roles:** Public
 
-Single-file size is proposed as 10,000,000 bytes for the mockup “10 MB”; confirm MB versus MiB (Q6). One request uploads one file to simplify Flutter progress/retries. Total count/aggregate quotas and required attachment categories remain Q6; set operational abuse controls before production. Pending/rejected retained files block submit; owner can remove them from a draft. Attachment edits and scanner updates coordinate through the parent version so submit cannot race an incomplete upload. Orphan cleanup and permanent retention require confirmed policy. Direct presigned uploads are unnecessary for this baseline; a later change must retain quarantine, parent ownership and completion verification.
+**Validation and business rules:** Public, no credentials or request body. Standard HEAD/OPTIONS are provided by DRF. Does not validate migration state.
 
-Authorization is checked at endpoint and object level for lists, totals, details, tasks and file/PDF bytes. Parameterized queries and allowlisted sorts avoid injection. Reject mass-assigned `ownerId`, status, timestamps, reviewer roles and cost/type fields. Bound JSON payloads and rate-limit expensive PDF/file requests. Encrypt database/blob storage at rest and separate service credentials by function. Restrict CORS to configured frontend origins; CORS is not authorization.
+**Path/query parameters:** none.
 
-Write audit records in the same transaction as state/decision changes; authenticate download/read audit events separately. Record actor, action, resource, request ID, time, outcome, before/after version and sanitized changed fields. Keep decision actor/name/title/time snapshots for printable historical records. Never log password/token content, full file bytes or unnecessary personal data. Restrict audit modification/deletion; protect backups and record operational access. Log denied access and authentication failures without exposing credentials. Retention, note visibility, audit readership and legal signing requirements need Q11; no audit-admin endpoint is inferred.
+**Request body:** none.
 
-## 9. Flutter service/repository consumption (guidance only)
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
 
-Suggested boundaries are `AuthService/AuthRepository`, `ProgramSubmissionService/Repository`, `BackofficeService/Repository`, and `MasterDataService/Repository`. Services perform HTTP/envelope parsing; repositories manage session state, draft identity, caching and reconciliation. Domain models use typed DTOs, string IDs, exact money strings and date-only values separate from UTC instants. The frontend foundation follows these boundaries; this document describes the future business integration, not completed feature screens.
+```json
+{
+  "data": {
+    "status": "ok"
+  },
+  "meta": {
+    "requestId": "req_example"
+  }
+}
+```
 
-Persist the draft ID after create so opening/retrying the form does not create duplicates. Cache draft ETag with its detail; on 412 fetch the latest record and let the user resolve conflicting edits. Keep an idempotency key with each pending logical action. Apply a shared refresh interceptor with a single in-flight refresh; never loop on 401. Distinguish field validation from authorization, stale state and transient failures.
+**Possible errors:** `405`, `406`. All use the shared Error envelope; domain conflict codes and conditions are described above.
 
-Render multi-location and reviewer arrays, null/unknown type or cost, and pending/clean/rejected upload state explicitly. Read `allowedActions`, `myActiveTaskIds` and `submissionIssues` to display available actions; the backend still enforces them. Do not calculate the next stage, derive monetary amounts from file contents, determine assignment from job title, fabricate signatures or hide unauthorized data only in the UI. Dashboard totals (if approved) must come from a scoped aggregate, never from the current paginated list.
+#### `GET /api/v1/health/ready`
 
-The main illustrative single-reviewer sequence is create version 1 → save version 2 → upload pending version 3 → scan complete version 4 → submit version 5 → Checker approves version 6 → Mengetahui approves version 7 → final decision version 8. The removal and cancellation examples are independent alternatives, not additional steps in that sequence. Always use the live server version. Approve and reject fixtures are mutually exclusive outcomes of the same version-7 final task. Provisional actions assume the applicable policy has been confirmed; these fixtures do not authorize that policy. Type and cost deliberately stay null because their source is unresolved. A future confirmed source would supply `programType` and exact Money in read projections.
+Check MySQL connectivity.
 
-## 10. OpenAPI scope and validation
+**Allowed roles:** Public
 
-`openapi.yaml` targets [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0.html), with reusable typed request/response schemas, JSON examples, bearer security, multipart upload, binary media types, role descriptions, error responses and header/query definitions. The same example data is used in this document. Relative server `/api/v1` leaves deployment origin unspecified.
+**Validation and business rules:** Public, no credentials or request body. Standard HEAD/OPTIONS are provided by DRF. Does not validate migration state.
 
-Provisional paths are intentionally absent: register, submit, approve, reject, cancel and dashboard-summary. Their full illustrative contracts appear above and are listed in `x-provisional-operations`; they must not be generated as usable client methods until decisions are resolved. Supplied read/draft/file contracts remain useful to review and mock independently. No production implementation or runtime behavior has been tested.
+**Path/query parameters:** none.
 
-Validation passed for this design: OpenAPI 3.1 structural validation with `openapi-spec-validator`; YAML parsing and reference resolution; unique operation IDs and required path parameters; 49 Draft 2020-12 schemas; 236 OpenAPI parameter/request/response examples; all Markdown JSON examples and cross-document endpoint/example consistency. Coverage is 28 documented operations: 22 specified in OpenAPI and six explicitly provisional. SHA-256 checks confirmed all three source mockups, both runtime scripts and all six annotated images were unchanged. These document checks are not backend integration tests.
+**Request body:** none.
+
+**Success: 200.** Headers: `X-Request-Id`, `Cache-Control`.
+
+```json
+{
+  "data": {
+    "status": "ready",
+    "database": "ok"
+  },
+  "meta": {
+    "requestId": "req_example"
+  }
+}
+```
+
+**Possible errors:** `405`, `406`, `503`. All use the shared Error envelope; domain conflict codes and conditions are described above.
+
+## DTO field catalogue
+
+These schemas are implemented in `openapi.yaml`. Required means required in the JSON object, not necessarily non-null; `null` is explicit. POST drafts allow omission of every field. PATCH needs at least one field. Unknown properties are rejected. Response schemas list all fields, including nullable values, to simplify generated Flutter DTOs.
+
+### LoginRequest
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `email` | yes | string; maxLength=254 |
+| `password` | yes | string; minLength=1; maxLength=128 |
+| `clientType` | no | string; enum=['native', 'web']; default=native |
+
+### RefreshRequest
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `refreshToken` | no | string; minLength=32; maxLength=2048 |
+
+### DraftCreate
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `programName` | no | string; minLength=1; maxLength=200 / null |
+| `locationIds` | no | array of Id; maxItems=100; uniqueItems=True |
+| `periodStart` | no | string / null |
+| `periodEnd` | no | string / null |
+| `acknowledgerIds` | no | array of Id; maxItems=4; uniqueItems=True |
+| `approverIds` | no | array of Id; maxItems=5; uniqueItems=True |
+| `programTypeId` | no | Id / null |
+| `estimatedCost` | no | Money / null |
+
+### DraftUpdate
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `programName` | no | string; minLength=1; maxLength=200 / null |
+| `locationIds` | no | array of Id; maxItems=100; uniqueItems=True |
+| `periodStart` | no | string / null |
+| `periodEnd` | no | string / null |
+| `acknowledgerIds` | no | array of Id; maxItems=4; uniqueItems=True |
+| `approverIds` | no | array of Id; maxItems=5; uniqueItems=True |
+| `programTypeId` | no | Id / null |
+| `estimatedCost` | no | Money / null |
+
+### DecisionRequest
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `note` | no | string; maxLength=2000 / null |
+
+### CancelRequest
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `reason` | yes | string; minLength=1; maxLength=2000 |
+
+### Money
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `currency` | yes | string; enum=['IDR'] |
+| `amount` | yes | string; pattern=^(0\|[1-9][0-9]{0,13})(\.[0-9]{2})$ |
+
+### User
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `id` | yes | Id |
+| `fullName` | yes | string; minLength=0; maxLength=150 |
+| `employeeNumber` | yes | string; minLength=0; maxLength=50 |
+| `email` | yes | string; maxLength=254 |
+| `jobTitle` | yes | string; maxLength=150 / null |
+| `status` | yes | string; enum=['active', 'disabled'] |
+| `roles` | yes | array of Role; uniqueItems=True |
+| `timeZone` | yes | string |
+| `locationIds` | yes | array of Id; uniqueItems=True |
+| `checkerId` | yes | Id / null |
+
+### Person
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `id` | yes | Id |
+| `fullName` | yes | string; minLength=1; maxLength=150 |
+| `jobTitle` | yes | string; maxLength=150 / null |
+
+### Location
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `id` | yes | Id |
+| `code` | yes | string |
+| `name` | yes | string |
+| `isActive` | yes | boolean |
+
+### ProgramType
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `id` | yes | Id |
+| `code` | yes | string |
+| `name` | yes | string |
+| `isActive` | yes | boolean |
+
+### ReviewPlan
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `checker` | yes | Person / null |
+| `acknowledgers` | yes | array of Person |
+| `approvers` | yes | array of Person |
+
+### ReviewTask
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `id` | yes | Id |
+| `stage` | yes | Stage |
+| `reviewer` | yes | Person |
+| `position` | yes | integer; minimum=1 |
+| `status` | yes | string; enum=['waiting', 'ready', 'approved', 'rejected', 'voided'] |
+| `decidedAt` | yes | string / null |
+| `note` | yes | string; maxLength=2000 / null |
+
+### Attachment
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `id` | yes | Id |
+| `submissionId` | yes | Id |
+| `fileName` | yes | string; minLength=1; maxLength=255 |
+| `contentType` | yes | string; minLength=1 |
+| `sizeBytes` | yes | integer; minimum=1; maximum=10000000 |
+| `scanStatus` | yes | string; enum=['pending', 'clean', 'rejected'] |
+| `uploadedAt` | yes | string |
+
+### SubmissionSummary
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `id` | yes | Id |
+| `programNumber` | yes | string |
+| `programName` | yes | string; maxLength=200 / null |
+| `programType` | yes | ProgramType / null |
+| `locations` | yes | array of Location |
+| `periodStart` | yes | string / null |
+| `periodEnd` | yes | string / null |
+| `estimatedCost` | yes | Money / null |
+| `owner` | yes | Person |
+| `status` | yes | SubmissionStatus |
+| `currentStage` | yes | Stage / null |
+| `createdAt` | yes | string |
+| `updatedAt` | yes | string |
+| `submittedAt` | yes | string / null |
+| `version` | yes | integer; minimum=1 |
+| `myActiveTaskIds` | yes | array of Id |
+
+### Submission
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `id` | yes | Id |
+| `programNumber` | yes | string |
+| `programName` | yes | string; maxLength=200 / null |
+| `programType` | yes | ProgramType / null |
+| `locations` | yes | array of Location |
+| `periodStart` | yes | string / null |
+| `periodEnd` | yes | string / null |
+| `estimatedCost` | yes | Money / null |
+| `owner` | yes | Person |
+| `status` | yes | SubmissionStatus |
+| `currentStage` | yes | Stage / null |
+| `createdAt` | yes | string |
+| `updatedAt` | yes | string |
+| `submittedAt` | yes | string / null |
+| `version` | yes | integer; minimum=1 |
+| `myActiveTaskIds` | yes | array of Id |
+| `reviewPlan` | yes | ReviewPlan |
+| `reviewTasks` | yes | array of ReviewTask |
+| `attachments` | yes | array of Attachment |
+| `allowedActions` | yes | array of string; enum=['update', 'uploadAttachment', 'removeAttachment', 'submit', 'approve', 'reject', 'cancel', 'downloadPdf']; uniqueItems=True |
+| `submissionIssues` | yes | array of object |
+
+### SubmissionPolicy
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `policyVersion` | yes | string |
+| `checker` | yes | Person / null |
+| `minAcknowledgers` | yes | integer; const=1 |
+| `maxAcknowledgers` | yes | integer; minimum=1; maximum=4 |
+| `minApprovers` | yes | integer; const=1 |
+| `maxApprovers` | yes | integer; minimum=1; maximum=5 |
+| `allowedAttachmentExtensions` | yes | array of string; pattern=^\.[a-z0-9]+$; uniqueItems=True |
+| `maxAttachmentBytes` | yes | integer; const=10000000 |
+| `routingConfigured` | yes | boolean |
+
+### NativeSession
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `accessToken` | yes | string |
+| `tokenType` | yes | string; enum=['Bearer'] |
+| `expiresIn` | yes | integer; minimum=1 |
+| `refreshToken` | yes | string |
+| `refreshExpiresAt` | yes | string |
+| `sessionId` | yes | Id |
+| `user` | yes | User |
+
+### WebSession
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `accessToken` | yes | string |
+| `tokenType` | yes | string; enum=['Bearer'] |
+| `expiresIn` | yes | integer; minimum=1 |
+| `refreshExpiresAt` | yes | string |
+| `sessionId` | yes | Id |
+| `user` | yes | User |
+| `csrfToken` | yes | string |
+
+### PageMeta
+
+| Field | Required | Type / constraints |
+| --- | --- | --- |
+| `requestId` | yes | string; minLength=1 |
+| `page` | yes | integer; minimum=1 |
+| `pageSize` | yes | integer; minimum=1; maximum=100 |
+| `totalItems` | yes | integer; minimum=0 |
+| `totalPages` | yes | integer; minimum=0 |
+| `hasNextPage` | yes | boolean |
+
+## Security, uploads, signatures and audit
+
+Passwords use Django Argon2 hashing and provisioning validators (minimum 15 characters plus common/numeric/similarity checks). Token values are random, stored hashed, and never logged. Every authenticated request checks active account, unrevoked session and access expiry; role and object checks happen at each business request. Disabling an account immediately blocks access and refresh; deliberate all-session revocation is needed if an account will later be re-enabled. Native and web use the same Bearer API access authorization. Browser refresh cookies are HttpOnly, Secure outside DEBUG and SameSite=Lax; CSRF is checked on cookie/Origin-bearing writes, including login. Trusted origins and CORS are allowlisted. These protections follow [Django’s CSRF model](https://docs.djangoproject.com/en/5.2/ref/csrf/).
+
+Login is limited by source address (60 auth requests/minute) and normalized email (10 login attempts/minute), with authenticated program APIs at 180 requests/minute per user. Rate counters are transactional across workers. Configure trusted proxy address handling and edge request limits when deploying; do not blindly trust X-Forwarded-For. Use TLS, a production application server, private media access, backups and secret management before deployment; Compose uses the development server. Browser origins must share a site with the API for the chosen cookie policy. Token lifetimes/rates are explicit engineering defaults, not selected company session policy.
+
+Allowed upload extensions: `.pdf`, `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.xlt`, `.xltx`, `.xltm`, `.xla`, `.xlam`, `.xlw`, `.xlm`. The server validates PDF or Office container content, not just extension/MIME. Modern ZIP workbooks require workbook/content-type entries and bounded expansion. Legacy containers require a readable Excel workbook stream before release. Very old non-OLE workbooks/import formats are not silently accepted. Password-encrypted PDF/Office documents stay pending; malformed/infected files are rejected. No macros, formulas or external workbook links execute. Files accepted with 202 remain unusable until inspection completes; scanner/storage outage does not turn pending into clean. ClamAV INSTREAM transport and image setup follow the [official scanner documentation](https://docs.clamav.net/manual/Usage/Scanning.html) and [Docker instructions](https://docs.clamav.net/manual/Installing/Docker.html). Legacy encryption detection uses the [Excel FILEPASS record](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xls/cf9ae8d5-4e8c-40a2-95f1-3b31f16b5529) and [olefile stream inspection](https://olefile.readthedocs.io/en/latest/Howto.html).
+
+Upload flow: create draft → multipart POST with key/ETag → 202 pending → poll attachment metadata with backoff → refetch detail after a verdict changes its version → submit or remove. Private random storage keys never appear in API responses. Downloads require parent ownership/assignment and a nonremoved clean file, use attachment disposition/nosniff, and are audited. Files are soft removed; aggregate/count quotas and deletion retention await company policy. Long-running scanning uses a simple management worker, not a message broker or microservice architecture.
+
+The team provisions a PNG/JPEG signature (up to 2 MB/4 megapixels), normalized to a private PNG. Submit/approve bind immutable signature versions to the event. Missing required signatures block signing actions; missing/corrupt historical image bytes stop PDF generation. Future replacement must add a new version, preserving old references. PDFs include the saved status, signers, timestamps and notes; rejected/waiting tasks never gain approval signatures. The image is a provisioned signature artifact, not an inferred certificate-signing service.
+
+Audit rows record actor, operation, resource, request ID, time and bounded metadata for login/refresh/logout, draft changes, submission/decisions/cancel, uploads/removal/scanning, file/PDF reads and trusted provisioning. State changes and their audits commit together using [Django atomic transactions](https://docs.djangoproject.com/en/5.2/topics/db/transactions/). Request bodies, passwords, bearer/refresh tokens, raw signatures and file contents are not stored in logs. No public audit-edit/delete endpoint exists. Deployment roles, audit-reader access, tamper-evident storage and retention remain operational policy work.
 
 ## Open Questions / Assumptions
 
-These are unresolved requirements, not approval already given. No answer was inferred from elapsed time or mockup placeholder behavior.
+Confirmed sequential approval, terminal rejection and provisioned signature snapshots are implemented; they are no longer questions. Remaining decisions are listed here, with their current behavior made explicit.
 
-| ID | Question | Affected contract / what remains unfinalized |
+| ID | Question / assumption | Current behavior |
 | --- | --- | --- |
-| Q1 | Is registration open, invitation-only, HR-verified or admin-approved? What proves the employee number/email match, which domains are allowed, and is email verification required? What role/location is assigned, and is login allowed immediately? | Registration/activation/verification endpoints; provisional receipt cannot create an active account by itself. Existing-account login is specified. |
-| Q2 | How is the fixed Checker resolved: employee supervisor, branch, selected location or something else? What happens for multiple locations, missing/inactive Checker or no eligible reviewers? Who maintains the directory and location scope? | Policy/configuration and directory eligibility; submit blocked until routing is defined. No hard-coded Andi or global people listing. |
-| Q3 | Do multiple Mengetahui and Menyetujui act sequentially or in parallel? Must all approve, any one, or a quorum? Does selected order matter? Is Mengetahui an acknowledgement or approval? Are self-review, repeated people across stages, delegation/reassignment allowed? Are defaults 2/3 fixed or configurable per branch/program? | Task readiness/completion and approve action; cannot finalize multi-person state transitions. No chosen quorum or automatic bypass. |
-| Q4 | Can Checker and Mengetahui reject? Does any rejection end the entire request? Is a rejection reason required despite the optional note UI? Is return-for-revision different from rejection, and may rejected programs be revised/resubmitted? | Reject/acknowledge/return/reopen transitions and task invalidation. No invented revision status or resubmission endpoint. |
-| Q5 | Who enters program type and estimated cost, absent from the creation form? Are they required before submit, and are budgets/targets structured or attachment-only? IDR only? Date/backdating/period filter meaning? When is the program number allocated and how does numbering reset? | Cost/type writer and validation, numbering/date policy. Fields remain nullable read projections; never parsed from names/spreadsheets. |
-| Q6 | Must proposals or spreadsheets be attached? Minimum/maximum file count and combined size? Does 10 MB mean 10,000,000 or 10,485,760 bytes? Are encrypted/macro-bearing Excel files allowed, and how long are draft/rejected/removed files retained? | Submit attachment rules, abuse quotas and storage retention. Existing format/size requirement supports the simple upload contract. |
-| Q7 | Is cancellation supported? Who may cancel drafts, pending or approved requests, and is a reason required? What happens to active tasks, history and files? | Entire cancel endpoint and candidate cancelled state; example is not a confirmed business rule. Batal in confirmation modals is only local dismissal. |
-| Q8 | Does Backoffice show only the current turn or also completed/past/future assignments? What does Admin Backoffice authorize: global read, branch scope, user/master-data management, reassignment or override? | Current-turn read contract follows explicit UI prose; history/global/admin endpoints are deferred. Rejected sample row does not justify broad access. |
-| Q9 | What dashboard metrics, filters, date basis and scope are needed? Are approved budget totals or reports/export required? | Dashboard-summary is illustrative counts only and excluded from OpenAPI; no reporting/data-export contract is invented. |
-| Q10 | Platform scope is answered: native mobile/desktop and Flutter web. Is corporate SSO/MFA required? Password recovery/change flow, session/device limits, inactivity timeout and profile edit permissions? | Proposed native session contract; browser cookie/CSRF adaptation and additional account endpoints require requirements. |
-| Q11 | Are reviewer notes visible to submitters and other reviewers? Must printed stamps have legal digital-signature status? Who may read audit logs; what retention, privacy and historical post-decision access rules apply? | Read projections propose visible notes; PDF is a visual audit record only. Legal signing and audit management are not specified. |
+| R2 | Who maintains employee roles, locations and selectable reviewers, and who repairs missing/inactive Checker mappings? | Team provisions exact database relationships; drafts can be saved, submit blocks invalid mapping. No automatic substitute. |
+| R3 | Confirm maximum two Mengetahui/three Menyetujui; allow self-approval, the same reviewer in multiple stages, delegation or reassignment? | Mockup limits are configuration defaults; sequential approval is confirmed. Unconfirmed self/cross-stage assignments block submit; no delegation/reassignment API. |
+| R4 | Must rejection have a note, and is a separate revision/new linked submission workflow needed? | Any rejection is terminal as confirmed. Notes follow the optional mockup input; rejected content is immutable and there is no resubmit endpoint. |
+| R5 | Are type and cost mandatory at submit? Are structured budgets needed? Are past dates allowed; do users also need an overlap-period filter? | Type/cost are editable; with both filled the workflow works. Missing values block until requiredness is configured. Only valid ordered execution dates are validated today (no invented future-date cutoff). Filtering explicitly uses inclusive start-date bounds. No structured budget inference. |
+| R6 | Are password-protected/very old Excel/import formats needed? What are per-program count/aggregate limits and retention? | PDF and listed Excel families accepted for quarantine. Encrypted/uninspectable files are not released; very old unsupported containers fail validation. Per-file 10,000,000-byte limit; no approved aggregate quota/deletion schedule. |
+| R7 | May the proposer cancel drafts, pending reviews or approved programs? Must a reason be required? | Cancellation states stay empty, so endpoint returns 409 policy unresolved. Conditional implementation requires a reason, voids outstanding tasks and retains files/history; this is reviewable but disabled. |
+| R8 | Does Backoffice admin need broader visibility/overrides? What powers belong to the future superadmin? | No broad grants or public account-management endpoints. Trusted provisioning command only. |
+| R9 | What dashboard/report cards, date basis and audience are needed later? | Deferred by the user’s unresolved dashboard requirement; no fabricated summary endpoint/metrics. |
+| R10 | Recovery/password change, profile editing, device limits and inactivity policy? | Not exposed. Native secure-storage and browser HttpOnly/CSRF contracts are designed; 15-minute access and 30-day absolute sessions are engineering defaults. |
+| R11 | Who may replace signatures, review audit logs and set retention? | Initial signatures are provisioned by the team and snapshotted automatically on submit/approve as confirmed. No replacement UI or raw-signature read API; audit/retention permissions remain undefined. |
 
-| ID | Explicit technical/design assumption | Consequence |
-| --- | --- | --- |
-| A1 | Persisted draft first; unique human number at create with `PRG-YYYY-NNNN`-like display, opaque immutable ID independent of it. | Matches draft number presentation but exact allocation/year/sequence is Q5. Never hard-code sample numbers. |
-| A2 | UTC instants, date-only execution dates, account IANA timezone with proposed Asia/Jakarta default; period filters target execution start date inclusively. | Confirm intended date semantics before integration; multi-location timezone is not inferred. |
-| A3 | Modular monolith, relational transactions/private blobs, opaque access tokens (900 seconds), refresh absolute expiry 30 days, 24-hour idempotency retention, page size 20/max 100, optimistic integer versions. | Flutter + DRF + MySQL is confirmed and scaffolded. Remaining token/session/idempotency policies are recommendations; they are not implemented by the foundation. |
-| A4 | One multipart file/request, 10,000,000-byte maximum, asynchronous quarantine scan with 202/polling; block access until clean. | Secure supporting design; total quotas and format policy must be finalized under Q6. |
-| A5 | Backend PDF is generated from saved data/decision snapshots, with visual stamps and no attachment merging. | Supports download/print conveniently; no cryptographic signature, company-logo upload or PDF archival requirement is implied. |
-| A6 | Role codes, request length/transport caps, public read projections, visible decision notes, current-turn inbox and scoped people filters are initial contract recommendations. | Organizational permissions and privacy must be reviewed against Q2/Q8/Q11 before production. Defaults never authorize unresolved transitions. |
+Other engineering defaults: PRG-YYYY-NNNN numbering rolls over in Asia/Jakarta without a gap-free guarantee; UTC instants and date-only execution values; 20/100 pagination; 24-hour successful idempotency replay; no automatic record purge; one modular DRF service and one MySQL database. These are documented implementation choices, not invented sales policies.

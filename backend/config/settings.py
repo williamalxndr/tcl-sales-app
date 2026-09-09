@@ -17,13 +17,19 @@ def required(name):
 
 
 def csv(name, default=""):
-    return [value.strip() for value in os.environ.get(name, default).split(",") if value.strip()]
+    return [
+        value.strip()
+        for value in os.environ.get(name, default).split(",")
+        if value.strip()
+    ]
 
 
 SECRET_KEY = required("DJANGO_SECRET_KEY")
 DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
 if not DEBUG and (SECRET_KEY.startswith("local-") or len(SECRET_KEY) < 50):
-    raise ImproperlyConfigured("Use a strong, unique DJANGO_SECRET_KEY outside development.")
+    raise ImproperlyConfigured(
+        "Use a strong, unique DJANGO_SECRET_KEY outside development."
+    )
 ALLOWED_HOSTS = csv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 INSTALLED_APPS = [
@@ -34,6 +40,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "apps.accounts",
     "apps.core",
+    "apps.programs",
 ]
 MIDDLEWARE = [
     "apps.core.middleware.RequestIdMiddleware",
@@ -73,8 +80,13 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
 ]
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 15}},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 15},
+    },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
@@ -86,16 +98,18 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
-    # No implicit Basic/Session authentication for the API. Token + browser
-    # session contracts must be implemented explicitly before business routes.
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    # Bearer access tokens for every client; browser refresh cookies require CSRF.
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "apps.accounts.authentication.OpaqueBearerAuthentication"
+    ],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
     "EXCEPTION_HANDLER": "apps.core.api.exception_handler",
 }
 CORS_ALLOWED_ORIGINS = csv("CORS_ALLOWED_ORIGINS")
 CORS_URLS_REGEX = r"^/api/v1/.*$"
-CORS_ALLOW_CREDENTIALS = False
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = csv("CSRF_TRUSTED_ORIGINS") or CORS_ALLOWED_ORIGINS
 CORS_ALLOW_HEADERS = [*default_headers, "idempotency-key", "if-match", "x-request-id"]
 CORS_EXPOSE_HEADERS = ["ETag", "Location", "X-Request-Id", "Retry-After"]
 SESSION_COOKIE_SECURE = not DEBUG
@@ -105,3 +119,8 @@ CSRF_COOKIE_SECURE = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 DATA_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024
+MEDIA_ROOT = Path(os.environ.get("PRIVATE_MEDIA_ROOT", str(BASE_DIR / "media")))
+REFRESH_COOKIE_NAME = "sales_refresh"
+CLAMAV_HOST = os.environ.get("CLAMAV_HOST", "clamav")
+CLAMAV_PORT = int(os.environ.get("CLAMAV_PORT", "3310"))

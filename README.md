@@ -2,7 +2,7 @@
 
 Flutter for Android, iOS, web, Windows, macOS and Linux; Django REST Framework for the API; MySQL 8.4 for storage.
 
-This is a runnable development foundation. The Flutter launch screen checks backend/MySQL availability through a service/repository boundary. Authentication, Program Submission and Backoffice business screens/endpoints are still to be implemented from the [API design](docs/API_DESIGN.md), after its relevant open questions are resolved.
+The DRF/MySQL backend now implements login, drafts, sequential approvals, rejection, private uploads, signed PDFs and completed-review history. The Flutter launch screen remains the existing service-status shell. Follow [backend setup and employee provisioning](docs/BACKEND.md); cancellation remains gated until its allowed states are confirmed.
 
 ## Repository
 
@@ -12,14 +12,16 @@ frontend/                 Flutter app and six platform projects
   lib/features/           Feature repositories and presentation
 backend/                  Django 5.2 LTS + DRF, Python 3.12
   config/                 Settings, URLs, ASGI/WSGI entrypoints
-  apps/accounts/          Email-based custom user and initial migration
-  apps/core/              Envelopes, request IDs, errors, health checks
+  apps/accounts/          Employee identities, roles, signatures and sessions
+  apps/core/              Envelopes, audit, idempotency, throttling and health checks
+  apps/programs/          MySQL models, scoped APIs and workflow/file services
 infra/mysql/              Development test-database initialization
 compose.yaml              Isolated backend + MySQL development services
-docs/API_DESIGN.md        Proposed business API and open questions
-docs/openapi.yaml         Design contract; not a list of implemented routes
-docs/foundation.openapi.yaml  The currently implemented health API
+docs/API_DESIGN.md        Implemented business contract and open questions
+docs/openapi.yaml         All 30 implemented API operations
+docs/foundation.openapi.yaml  Compatible health-only API subset
 docs/ARCHITECTURE.md      Boundaries, decisions and implementation status
+docs/BACKEND.md           Setup, provisioning, policy and scanner operation
 .github/workflows/ci.yml  Backend/MySQL and Flutter checks
 ```
 
@@ -35,7 +37,10 @@ cp .env.example .env
 docker compose up -d --build --wait mysql
 docker compose build backend
 docker compose run --rm backend python manage.py migrate --noinput
+docker compose run --rm backend python manage.py configure_workflow
+docker compose run --rm backend python manage.py seed_master_data
 docker compose up -d --wait backend
+docker compose --profile uploads up -d clamav attachment-scanner
 ```
 
 Then run Flutter web in a separate terminal:
@@ -114,4 +119,4 @@ Docker supplies Python and the native mysqlclient libraries. Direct host develop
 
 Backend direct dependencies are pinned in requirements.txt; frontend resolution is committed in pubspec.lock. Upgrade dependencies deliberately and rerun the checks. Django 5.2 LTS is chosen for a stable backend baseline; Django documents the [MySQL adapter and strict-mode requirements](https://docs.djangoproject.com/en/5.2/ref/databases/#mysql-notes).
 
-The initial custom user avoids a disruptive AUTH_USER_MODEL swap later. No login, public signup, admin site, token issuance or business-role grants are exposed yet. Django `is_staff`/`is_superuser` flags are framework metadata and do not define Backoffice permissions. Do not enable business routes using those flags as a substitute for the documented assignment rules.
+Employees are provisioned with the trusted `provision_employee` management command described in [BACKEND.md](docs/BACKEND.md). Login issues rotating opaque sessions; roles and assignment scope are checked per request. No public signup/admin/account-management endpoint is exposed. Django `is_staff`/`is_superuser` flags do not grant Backoffice access.

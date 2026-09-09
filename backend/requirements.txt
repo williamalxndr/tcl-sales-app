@@ -4,3 +4,7 @@ mysqlclient==2.2.8
 django-cors-headers==4.9.0
 argon2-cffi==25.1.0
 python-dotenv==1.2.3
+Pillow==12.3.0
+reportlab==5.0.1
+pypdf==6.18.0
+olefile==0.47

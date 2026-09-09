@@ -1,58 +1,46 @@
 # Architecture and implementation status
 
-The selected stack is **Flutter + Django REST Framework + MySQL**. One modular backend serves one shared Flutter codebase across Android, iOS, web, Windows, macOS and Linux. This repository currently implements the development foundation.
+The stack is Flutter + Django REST Framework + MySQL. One shared Flutter codebase targets Android, iOS, web, Windows, macOS and Linux. One modular DRF service owns authentication, authorization, workflow and file handling; there is no broker or microservice split.
 
 ```mermaid
 flowchart LR
     UI[Flutter presentation] --> Repo[Feature repository]
     Repo --> HTTP[Shared HTTP service]
-    HTTP -->|HTTPS /api/v1| API[Django REST Framework]
-    API --> Domain[Domain services and authorization]
-    Domain --> DB[(MySQL)]
+    HTTP -->|/api/v1| API[DRF views and serializers]
+    API --> Scope[Scoped selectors and domain services]
+    Scope --> DB[(MySQL 8.4)]
+    Scope --> Files[Private attachment and signature storage]
+    Worker[Attachment scan management worker] --> Files
+    Worker --> DB
+    Worker --> ClamAV[Private ClamAV daemon]
 ```
 
-The diagram shows the intended dependency direction. The only wired feature is service availability: the launch shell calls `ServiceStatusRepository`, which uses `ApiClient` to call the backend readiness endpoint; readiness runs a real MySQL query. Domain services/approval workflows remain to be implemented.
+Flutter remains at its previously generated six-platform shell and service-status repository. Business backend operations are now implemented, with their full contract in [openapi.yaml](openapi.yaml). [API_DESIGN.md](API_DESIGN.md) explains the business rules and unresolved decisions; [BACKEND.md](BACKEND.md) explains running and provisioning the implementation.
 
-## Implemented
-
-| Area | Foundation |
+| Layer | Responsibility |
 | --- | --- |
-| Flutter | Six generated platform projects, Material app shell, loading/failure/retry state, environment API URL, portable HTTP adapter, service repository, unit/widget tests |
-| Backend | Django 5.2 LTS, DRF, Python 3.12 container, MySQL-only settings, UTC, strict SQL mode, utf8mb4, request IDs, response/error helpers, CORS allowlist, secure-by-default future view permissions |
-| Identity | Custom user installed before initial migrations: opaque ID, normalized email, nullable unique employee number, full name, job title, timezone, Argon2 password hashing |
-| Runtime API | `GET /api/v1/health/live` and `GET /api/v1/health/ready`; standard HEAD/OPTIONS behavior supplied by DRF |
-| Local infrastructure | Docker Compose, private project network, loopback host ports, persistent MySQL volume, non-root backend container, separate MySQL test database |
-| Documentation | Business design preserved, implementation scope explicit, independent runtime OpenAPI, platform/host setup instructions |
-| CI | MySQL-backed backend tests, migration checks, Flutter formatting/analyzer/tests, web compilation |
+| `apps/accounts` | Custom employee user, explicit role grants, fixed Checker, assigned locations, versioned signatures; opaque Bearer session authentication, native/web refresh transport, trusted account provisioning |
+| `apps/core` | Request IDs, success/error envelopes, strict request fields, audit records, MySQL rate counters, idempotency replay, optimistic version checks and health |
+| `apps/programs/models.py` | Master records, explicit reviewer eligibility, policy, drafts, tasks, attachments and numbering counter |
+| `apps/programs/selectors.py` | Owner/current-task/completed-task access scopes, role checks, filters and pagination |
+| `apps/programs/services.py` | Draft validation, policy blockers, submission snapshots, sequential approvals, terminal rejection and gated cancellation |
+| `apps/programs/views.py` | Explicit REST resource/action endpoints, request validation and transactional service calls |
+| `apps/programs/uploads.py` | Private bounded uploads, quarantining, ClamAV transport, content access and soft removal |
+| `apps/programs/pdf.py` | Escaped printable forms with saved statuses, notes and frozen signature versions |
+| Management commands | Employee/master/policy provisioning and simple scan-worker execution |
 
-See [foundation.openapi.yaml](foundation.openapi.yaml) for implemented GET contracts. Liveness has no database dependency. Readiness checks connectivity only, not migration state or future external services. The service endpoints are public and return minimal operational information. Normal API views default to authenticated access, with no implicit Basic or browser session authentication enabled.
+Views validate syntax and permissions; services decide state transitions. Submit/action transactions lock the parent Program row. Idempotent actions also lock the actor, save their response atomically, and reject mismatched reuse. Unique review positions and counter locks prevent duplicate assignments/numbers. MySQL tests exercise concurrent duplicate creates and competing approval/rejection requests. Incomplete drafts remain editable, while unresolved business behavior is surfaced through submissionIssues or policy-conflict responses.
 
-## Not implemented yet
+Program snapshots preserve identity/master labels/review plans; policy snapshots protect submitted routing from later configuration changes. Each submit/approve references the signer’s exact immutable AccountSignature version. Replacing a current signature must never edit old image bytes/records. Private files have no static/media URL mapping. Background scan verdicts increment program versions, so clients refetch the parent before further writes.
 
-- Public registration/login, bearer token issuance/rotation/revocation, recovery and MFA/SSO.
-- Native secure token storage and browser HttpOnly session/CSRF adaptation. Web support is confirmed; the authentication transport still needs design work before login implementation.
-- Submission/master-data models, ownership/query filtering, file storage/scanning, PDFs, tasks, decisions and audit persistence.
-- The Authentication, Program Submission and Backoffice business screens.
-- Production hosting, TLS termination, production application server, backups and release signing.
+Use typed camelCase DTOs, exact IDR strings, date-only execution values and UTC instants. Flutter repositories should own session refresh serialization, ETag reconciliation and action retry keys. The backend enforces object scope and workflow even if a modified client sends forged status/actor fields.
 
-The 22 operations in [openapi.yaml](openapi.yaml) are **design contracts**, not executable backend routes. The six provisional business operations remain excluded from that specification. Selecting a framework does not resolve registration trust, routing/quorum, rejection, cost/type provenance, cancellation or Backoffice access.
+Current authenticated scope includes pre-provisioned login/profile; authorized master data and reviewer options; own drafts/list/detail/PATCH/submit; reviewer inbox/history/detail/approve/reject; optional quarantined uploads, private downloads and signed PDFs. Cancellation is implemented but its initial source-state allowlist is empty pending the user’s answer. Type/cost can be supplied now; submitting without them awaits requiredness configuration. No broad Backoffice-admin bypass exists.
 
-## Boundaries for subsequent work
+Deferred: Flutter business screens/integration, public signup, future superadmin account-management UI/API, recovery/profile editing, signature replacement UI, approval delegation/revision/reassignment, dashboard/report metrics, approved file/audit retention and deployment infrastructure. No existing Flutter file is changed by this backend phase.
 
-Flutter widgets call a feature repository, never construct HTTP requests or calculate workflow transitions. Repositories map API DTOs to client models and own refresh/reconciliation rules once those are defined. Shared HTTP code must remain portable: avoid unconditional `dart:io`, filesystem assumptions or native-only token plugins in common code. API addresses use compile-time public configuration; release targets require an explicit HTTPS URL. Date-only values, exact money strings and server action capabilities follow the business contract.
+MySQL is required in development and tests (InnoDB, utf8mb4, strict mode, READ COMMITTED); no SQLite fallback. Migrations are committed and applied explicitly. Default initialization grants the application access to `sales` and the isolated `test_sales` database. Production should use distinct migration/runtime permissions and an approved deployment process.
 
-Backend views validate request syntax and permissions, then call a feature service for a business operation. The service owns transactional authorization/state changes; selectors own scoped reads. Add domain apps such as `programs`, `reviews` and `master_data` when implementing their first confirmed use case, rather than introducing empty layers now. Explicit camelCase serializer fields map to Python snake_case model attributes; there is no blanket case-conversion middleware that could alter arbitrary keys.
+Docker Compose exposes only loopback development API/MySQL ports by default, stores MySQL persistently, and uses non-root Python containers. The optional uploads profile adds ClamAV 1.4 and one worker; its official amd64 image uses emulation on Apple Silicon. Private files use the shared ignored `backend/media/` mount. Compose’s Django runserver, mutable image-series tags and local credentials are development choices, not a production release.
 
-The custom user model is infrastructure preparation, not a completed profile/registration API. Its staff/superuser flags do not grant Backoffice rights. Future role and assignment checks must follow the design. Employee number can remain null for unprovisioned internal identities; the eventual registration flow must enforce the agreed employment verification rules.
-
-Use MySQL in development and tests to catch database-specific collation, uniqueness and transaction behavior. Migrations are committed and applied explicitly, not silently during every server startup. The development initialization grants access to `sales` and `test_sales` only. Changing the database/user names requires updating initialization too. Tests use `--keepdb` to retain only the isolated test database.
-
-The Compose file runs Django's development server. It is deliberately not a production deployment recipe. Keep debug disabled and strong secrets in deployment environments; introduce a production server, TLS, deployment checks and secret management when deployment is in scope.
-
-## Toolchain choices
-
-- Flutter **3.38.3**, Dart **3.10.1**, matching the installed SDK; dependencies resolved in `frontend/pubspec.lock`. No machine-wide SDK upgrade was performed.
-- Python **3.12**, Django **5.2.17** within the 5.2 LTS series, DRF **3.18.1**, mysqlclient **2.2.8**. Direct backend dependencies are pinned.
-- MySQL **8.4** image series; patch/image digests may change on pull. Pin deployment image digests as part of release engineering, not by assuming the local image is a production release.
-
-The initial technical decisions are informed by the [Django MySQL documentation](https://docs.djangoproject.com/en/5.2/ref/databases/#mysql-notes), [DRF release notes](https://www.django-rest-framework.org/community/release-notes/), and [Flutter platform setup](https://docs.flutter.dev/platform-integration). See README for local verification and remaining host-toolchain prerequisites.
+Toolchains: existing Flutter 3.38.3/Dart 3.10.1; Python 3.12; Django 5.2.17, DRF 3.18.1, mysqlclient 2.2.8; MySQL 8.4. Backend direct dependencies and contract-validation tools are pinned. CI validates OpenAPI/examples/route coverage, MySQL migrations/tests and the existing Flutter analyzer/tests/web compilation.

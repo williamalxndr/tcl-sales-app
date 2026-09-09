@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: Sales Program Submission API
-  version: 0.1.0-design
-  description: Design contract based on ui-mockup. No backend is implemented. Only sufficiently clear operations
-    are in paths. Registration, submit, approve, reject, cancel and dashboard-summary remain provisional in API_DESIGN.md.
-    Technical recommendations and authorization policy dependencies are documented there; this is not a production
-    release.
+  version: 0.3.0
+  description: Implemented DRF/MySQL API for pre-provisioned employee login, drafts, sequential approvals, private
+    uploads, signed PDFs and review history. Cancellation success remains gated pending allowed source states. Flutter
+    business screens and future superadmin/dashboard/recovery APIs are outside this backend phase. See API_DESIGN.md
+    and BACKEND.md.
 servers:
 - url: /api/v1
   description: Relative API root; configure the deployment origin in the client.
@@ -17,6 +17,7 @@ tags:
 - name: Program Submission
 - name: Backoffice
 - name: Master data
+- name: Health
 paths:
   /auth/login:
     post:
@@ -24,11 +25,27 @@ paths:
       tags:
       - Authentication
       summary: Authenticate an existing active account.
-      description: 'Allowed roles: Public. Email comparison is case-insensitive after trimming; never trim passwords.
-        Invalid email/password/disabled account use the same 401 response. Credentials are never logged. Lifetime
-        values are technical recommendations (A3).'
+      description: Login only for active, pre-provisioned employees. Normalize email, preserve password bytes, use
+        uniform 401 failures. clientType defaults to native. Native returns refreshToken; web returns csrfToken and
+        sets an HttpOnly SameSite=Lax refresh cookie, Secure outside development. Web first calls GET /auth/csrf and
+        sends its X-CSRFToken with credentials. Origin-bearing login also requires CSRF. Access lasts 15 minutes;
+        refresh families have a 30-day absolute expiry. No public registration.
       x-allowed-roles: Public
-      parameters: []
+      parameters:
+      - in: header
+        name: X-CSRFToken
+        required: false
+        schema:
+          type: string
+        description: Required for web/cookie/Origin-bearing requests. Obtain from /auth/csrf, then use the rotated
+          token from login.
+      - in: cookie
+        name: sales_refresh
+        required: false
+        schema:
+          type: string
+        description: HttpOnly browser refresh transport. Sent automatically with credentials; do not set it from Flutter
+          JavaScript.
       responses:
         '200':
           description: Successful operation.
@@ -36,37 +53,68 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
                 const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: Browser-only HttpOnly refresh cookie; Secure outside development; SameSite=Lax; Path=/api/v1/auth.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SessionResponse'
-              example:
-                data:
-                  accessToken: example-access-token-not-a-real-credential
-                  tokenType: Bearer
-                  expiresIn: 900
-                  refreshToken: example-refresh-token-not-a-real-credential
-                  refreshExpiresAt: '2026-09-20T03:00:00Z'
-                  sessionId: ses_rizky
-                  user:
-                    id: usr_rizky
-                    fullName: Rizky Pratama
-                    jobTitle: Sales Executive
-                    employeeNumber: B001
-                    email: rizky@example.com
-                    status: active
-                    roles:
-                    - submitter
-                    timeZone: Asia/Jakarta
-                    locationIds:
-                    - loc_bsd
-                meta:
-                  requestId: req_01salesdesign
+              examples:
+                native:
+                  value:
+                    data:
+                      accessToken: example-access-token-not-a-real-credential
+                      tokenType: Bearer
+                      expiresIn: 900
+                      refreshToken: example-refresh-token-not-a-real-credential
+                      refreshExpiresAt: '2026-09-20T03:00:00Z'
+                      sessionId: ses_rizky
+                      user:
+                        id: usr_rizky
+                        fullName: Rizky Pratama
+                        jobTitle: Sales Executive
+                        employeeNumber: B001
+                        email: rizky@example.com
+                        status: active
+                        roles:
+                        - submitter
+                        timeZone: Asia/Jakarta
+                        locationIds:
+                        - loc_bsd
+                        checkerId: usr_andi
+                    meta:
+                      requestId: req_01salesdesign
+                web:
+                  value:
+                    data:
+                      accessToken: example-access-token-not-a-real-credential
+                      tokenType: Bearer
+                      expiresIn: 900
+                      refreshExpiresAt: '2026-09-20T03:00:00Z'
+                      sessionId: ses_rizky
+                      user:
+                        id: usr_rizky
+                        fullName: Rizky Pratama
+                        jobTitle: Sales Executive
+                        employeeNumber: B001
+                        email: rizky@example.com
+                        status: active
+                        roles:
+                        - submitter
+                        timeZone: Asia/Jakarta
+                        locationIds:
+                        - loc_bsd
+                        checkerId: usr_andi
+                      csrfToken: example-csrf-token-not-a-real-token
+                    meta:
+                      requestId: req_01salesdesign
         '400':
           $ref: '#/components/responses/400'
         '401':
@@ -81,6 +129,12 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '403':
+          $ref: '#/components/responses/403'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
       security: []
       requestBody:
         required: true
@@ -97,12 +151,26 @@ paths:
       tags:
       - Authentication
       summary: Rotate the refresh token and issue a new access token.
-      description: 'Allowed roles: Refresh-token holder. Validate the hashed token and session, rotate once, revoke
-        the family on reuse. This request uses the refresh credential, not an access bearer token. Serialize refresh
-        requests in the client; do not automatically retry on a lost response. Role changes and disabled accounts
-        take effect immediately.'
+      description: Rotate both access and refresh tokens atomically; the previous access token becomes invalid immediately.
+        Native sends refreshToken; web sends {} with sales_refresh cookie and X-CSRFToken. A used refresh token revokes
+        the whole family, including the newest access token. Expired, disabled, revoked or wrong-transport sessions
+        return 401. Serialize refresh calls in the client.
       x-allowed-roles: Refresh-token holder
-      parameters: []
+      parameters:
+      - in: header
+        name: X-CSRFToken
+        required: false
+        schema:
+          type: string
+        description: Required for web/cookie/Origin-bearing requests. Obtain from /auth/csrf, then use the rotated
+          token from login.
+      - in: cookie
+        name: sales_refresh
+        required: false
+        schema:
+          type: string
+        description: HttpOnly browser refresh transport. Sent automatically with credentials; do not set it from Flutter
+          JavaScript.
       responses:
         '200':
           description: Successful operation.
@@ -110,37 +178,68 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
                 const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: Browser-only HttpOnly refresh cookie; Secure outside development; SameSite=Lax; Path=/api/v1/auth.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SessionResponse'
-              example:
-                data:
-                  accessToken: example-new-access-token-not-a-real-credential
-                  tokenType: Bearer
-                  expiresIn: 900
-                  refreshToken: example-new-refresh-token-not-a-real-credential
-                  refreshExpiresAt: '2026-09-20T03:00:00Z'
-                  sessionId: ses_rizky
-                  user:
-                    id: usr_rizky
-                    fullName: Rizky Pratama
-                    jobTitle: Sales Executive
-                    employeeNumber: B001
-                    email: rizky@example.com
-                    status: active
-                    roles:
-                    - submitter
-                    timeZone: Asia/Jakarta
-                    locationIds:
-                    - loc_bsd
-                meta:
-                  requestId: req_01salesdesign
+              examples:
+                native:
+                  value:
+                    data:
+                      accessToken: example-new-access-token-not-a-real-credential
+                      tokenType: Bearer
+                      expiresIn: 900
+                      refreshToken: example-new-refresh-token-not-a-real-credential
+                      refreshExpiresAt: '2026-09-20T03:00:00Z'
+                      sessionId: ses_rizky
+                      user:
+                        id: usr_rizky
+                        fullName: Rizky Pratama
+                        jobTitle: Sales Executive
+                        employeeNumber: B001
+                        email: rizky@example.com
+                        status: active
+                        roles:
+                        - submitter
+                        timeZone: Asia/Jakarta
+                        locationIds:
+                        - loc_bsd
+                        checkerId: usr_andi
+                    meta:
+                      requestId: req_01salesdesign
+                web:
+                  value:
+                    data:
+                      accessToken: example-new-access-token-not-a-real-credential
+                      tokenType: Bearer
+                      expiresIn: 900
+                      refreshExpiresAt: '2026-09-20T03:00:00Z'
+                      sessionId: ses_rizky
+                      user:
+                        id: usr_rizky
+                        fullName: Rizky Pratama
+                        jobTitle: Sales Executive
+                        employeeNumber: B001
+                        email: rizky@example.com
+                        status: active
+                        roles:
+                        - submitter
+                        timeZone: Asia/Jakarta
+                        locationIds:
+                        - loc_bsd
+                        checkerId: usr_andi
+                      csrfToken: example-csrf-token-not-a-real-token
+                    meta:
+                      requestId: req_01salesdesign
         '400':
           $ref: '#/components/responses/400'
         '401':
@@ -155,6 +254,12 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '403':
+          $ref: '#/components/responses/403'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
       security: []
       requestBody:
         required: true
@@ -170,12 +275,26 @@ paths:
       tags:
       - Authentication
       summary: Revoke the current refresh-token family and its access sessions.
-      description: 'Allowed roles: Refresh-token holder. No live access token required. Accept current or previously
-        rotated token from the family for revocation. Unknown, expired or already revoked tokens return the same
-        success; do not expose whether a token existed. Clear client credentials after attempting logout. Other
-        device sessions remain active.'
+      description: Revoke the identified session family; repeated logout with a validly shaped but already revoked/unknown
+        credential succeeds. Native supplies refreshToken; web uses its HttpOnly cookie and X-CSRFToken, then the
+        cookie is cleared. Other sessions are unaffected. Missing credential is 401. Does not require a valid access
+        token.
       x-allowed-roles: Refresh-token holder
-      parameters: []
+      parameters:
+      - in: header
+        name: X-CSRFToken
+        required: false
+        schema:
+          type: string
+        description: Required for web/cookie/Origin-bearing requests. Obtain from /auth/csrf, then use the rotated
+          token from login.
+      - in: cookie
+        name: sales_refresh
+        required: false
+        schema:
+          type: string
+        description: HttpOnly browser refresh transport. Sent automatically with credentials; do not set it from Flutter
+          JavaScript.
       responses:
         '200':
           description: Successful operation.
@@ -183,11 +302,15 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
                 const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: Browser-only HttpOnly refresh cookie; Secure outside development; SameSite=Lax; Path=/api/v1/auth.
           content:
             application/json:
               schema:
@@ -209,6 +332,12 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '403':
+          $ref: '#/components/responses/403'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
       security: []
       requestBody:
         required: true
@@ -224,9 +353,9 @@ paths:
       tags:
       - User/Profile
       summary: Load the signed-in profile for the header and auto-filled applicant section.
-      description: 'Allowed roles: Any active authenticated role. Only the caller profile. Job title, employee number,
-        roles and location scope are managed by trusted provisioning, never by the submission request. No self-service
-        profile editing is visible in the designs.'
+      description: Return current authenticated identity, current role grants, assigned locationIds and nullable checkerId.
+        Roles and relationships are provisioned by the organization. No public profile editing or account creation.
+        No role grants are inferred from job title or staff flags.
       x-allowed-roles: Any active authenticated role
       parameters: []
       responses:
@@ -236,7 +365,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -258,6 +387,7 @@ paths:
                   timeZone: Asia/Jakarta
                   locationIds:
                   - loc_bsd
+                  checkerId: usr_andi
                 meta:
                   requestId: req_01salesdesign
         '400':
@@ -272,15 +402,18 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /master-data/locations:
     get:
       operationId: listLocations
       tags:
       - Master data
       summary: List locations the caller may select.
-      description: 'Allowed roles: Any active authenticated role. Return active authorized locations only; BSD and
-        Bekasi are seed examples, not a permanent enum. q searches code/name. Server applies organizational scope
-        before pagination.'
+      description: Return only active locations explicitly assigned to this account. Search code/name. Location values
+        are master records, not permanent enums.
       x-allowed-roles: Any active authenticated role
       parameters:
       - name: page
@@ -290,6 +423,7 @@ paths:
           type: integer
           minimum: 1
           default: 1
+          maximum: 2147483647
         description: 1-based page.
         example: 1
       - name: pageSize
@@ -308,6 +442,7 @@ paths:
         schema:
           type: string
           maxLength: 100
+          minLength: 1
         description: Case-insensitive literal substring of location code/name.
       responses:
         '200':
@@ -316,7 +451,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -350,15 +485,18 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /master-data/program-types:
     get:
       operationId: listProgramTypes
       tags:
       - Master data
-      summary: List program types used by read-only filters.
-      description: 'Allowed roles: Any active authenticated role. Diskon and Bundling are observed values. This
-        endpoint does not settle who assigns a submission type (Q5); type is not writable in draft requests. Return
-        active types; old submissions retain snapshots of inactive types.'
+      summary: List active program types for draft selection and filters.
+      description: Return active program types, searchable by code/name. Proposer selects a type when editing a draft.
+        No master-data write API is exposed.
       x-allowed-roles: Any active authenticated role
       parameters:
       - name: page
@@ -368,6 +506,7 @@ paths:
           type: integer
           minimum: 1
           default: 1
+          maximum: 2147483647
         description: 1-based page.
         example: 1
       - name: pageSize
@@ -386,6 +525,7 @@ paths:
         schema:
           type: string
           maxLength: 100
+          minLength: 1
         description: Case-insensitive literal substring of type code/name.
       responses:
         '200':
@@ -394,7 +534,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -432,15 +572,19 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /program-submissions:
     get:
       operationId: listMySubmissions
       tags:
       - Program Submission
       summary: List and search only submissions owned by the caller.
-      description: 'Allowed roles: submitter (owner). Ownership is server-derived and always applied before filters/counts.
-        No ownerId override. Read projections preserve null programType/estimatedCost until their source is defined.
-        Unknown or unauthorized filter IDs produce an empty list without disclosing them.'
+      description: Submitter role plus owner scope. Apply filters before pagination. Search program name/number; execution
+        date filters bound periodStart inclusively. OR within repeated filters, AND between filters. Stable sorting
+        appends id ascending. Out-of-range pages are empty.
       x-allowed-roles: submitter (owner)
       parameters:
       - name: page
@@ -450,6 +594,7 @@ paths:
           type: integer
           minimum: 1
           default: 1
+          maximum: 2147483647
         description: 1-based page.
         example: 1
       - name: pageSize
@@ -468,15 +613,15 @@ paths:
         schema:
           type: string
           maxLength: 100
-        description: Trimmed, case-insensitive literal substring of program number or program name; no wildcard
-          syntax.
+          minLength: 1
+        description: Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax.
         example: Bundling
       - name: programNumber
         in: query
         required: false
         schema:
           type: string
-          maxLength: 64
+          maxLength: 200
         description: Exact program number; combines with q using AND.
         example: PRG-2026-0144
       - name: status
@@ -486,8 +631,7 @@ paths:
           type: array
           items:
             $ref: '#/components/schemas/SubmissionStatus'
-          uniqueItems: true
-          maxItems: 7
+          maxItems: 100
         description: Repeat key for multiple statuses; OR within this filter.
         style: form
         explode: true
@@ -498,7 +642,6 @@ paths:
           type: array
           items:
             $ref: '#/components/schemas/Id'
-          uniqueItems: true
           maxItems: 100
         description: Repeat key; submission must match at least one selected location.
         style: form
@@ -544,7 +687,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -558,7 +701,11 @@ paths:
                 - id: sub_0144
                   programNumber: PRG-2026-0144
                   programName: Bundling Idul Adha Outlet BSD
-                  programType: null
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
                   locations:
                   - id: loc_bsd
                     code: BSD
@@ -566,7 +713,9 @@ paths:
                     isActive: true
                   periodStart: '2026-09-06'
                   periodEnd: '2026-09-20'
-                  estimatedCost: null
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
                   owner:
                     id: usr_rizky
                     fullName: Rizky Pratama
@@ -599,16 +748,20 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
     post:
       operationId: createDraft
       tags:
       - Program Submission
       summary: Create a persisted draft, including an empty draft.
-      description: 'Allowed roles: submitter. All body fields optional; {} creates an empty draft with null scalars/empty
-        arrays. Owner, status, number, checker, cost, type and timestamps are server-owned. Allocate immutable opaque
-        ID and unique human number in one transaction. Validate provided references against confirmed eligibility;
-        never use the mockup PEOPLE array as authorization. Missing routing may leave checker null and submissionIssues
-        populated. See A1 and Q2/Q5.'
+      description: Submitter role required. {} creates an empty draft. All supplied references must be active and
+        authorized; selected reviewers require explicit per-employee eligibility plus the matching role. Allocate
+        PRG-YYYY-NNNN under a MySQL row lock, yearly in Asia/Jakarta. Owner, checker, number, status, timestamps and
+        tasks are server-owned. Never derive type/cost from uploaded spreadsheets. Drafts may be incomplete. Inspect
+        submissionIssues before submit.
       x-allowed-roles: submitter
       parameters:
       - name: Idempotency-Key
@@ -627,7 +780,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -637,13 +790,10 @@ paths:
                 type: string
                 pattern: ^"[1-9][0-9]*"$
               description: Quoted parent submission version.
-              example: '"1"'
             Location:
               schema:
                 type: string
-                format: uri-reference
-              description: Created resource metadata URI.
-              example: /api/v1/program-submissions/sub_0144
+              description: Relative URL of the created resource.
           content:
             application/json:
               schema:
@@ -653,7 +803,11 @@ paths:
                   id: sub_0144
                   programNumber: PRG-2026-0144
                   programName: Bundling Idul Adha Outlet BSD
-                  programType: null
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
                   locations:
                   - id: loc_bsd
                     code: BSD
@@ -661,7 +815,9 @@ paths:
                     isActive: true
                   periodStart: '2026-09-06'
                   periodEnd: '2026-09-20'
-                  estimatedCost: null
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
                   owner:
                     id: usr_rizky
                     fullName: Rizky Pratama
@@ -716,6 +872,10 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
       requestBody:
         required: true
         content:
@@ -732,15 +892,19 @@ paths:
               - usr_dewi
               approverIds:
               - usr_ratna
+              programTypeId: typ_bundling
+              estimatedCost:
+                currency: IDR
+                amount: '42000000.00'
   /program-submissions/{submissionId}:
     get:
       operationId: getMySubmission
       tags:
       - Program Submission
       summary: Read an owned draft or submission, progress and attachment metadata.
-      description: 'Allowed roles: submitter (owner). Return 404 for non-owned IDs. Review tasks include all stages
-        for the progress/signature display; task eligibility is computed on the backend. Response ETag is the quoted
-        parent version. Notes are owner-visible in this proposed contract (Q11).'
+      description: Require submitter role and ownership; return 404 outside owner scope. Return current version and
+        ETag, complete review notes, attachments, allowedActions and submissionIssues. Submitted identity, master
+        labels and review plan use frozen snapshots.
       x-allowed-roles: submitter (owner)
       parameters:
       - name: submissionId
@@ -757,7 +921,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -767,7 +931,6 @@ paths:
                 type: string
                 pattern: ^"[1-9][0-9]*"$
               description: Quoted parent submission version.
-              example: '"5"'
           content:
             application/json:
               schema:
@@ -777,7 +940,11 @@ paths:
                   id: sub_0144
                   programNumber: PRG-2026-0144
                   programName: Bundling September Outlet BSD
-                  programType: null
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
                   locations:
                   - id: loc_bsd
                     code: BSD
@@ -785,7 +952,9 @@ paths:
                     isActive: true
                   periodStart: '2026-09-06'
                   periodEnd: '2026-09-20'
-                  estimatedCost: null
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
                   owner:
                     id: usr_rizky
                     fullName: Rizky Pratama
@@ -868,16 +1037,20 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
     patch:
       operationId: updateDraft
       tags:
       - Program Submission
       summary: Partially update an owned draft.
-      description: 'Allowed roles: submitter (owner). Draft only; 409 SUBMISSION_LOCKED otherwise. Omitted fields
-        unchanged; null clears scalar fields; arrays replace the entire selection and [] clears it. A non-null name
-        must contain non-whitespace text. Provided dates must be real dates and start <= end when both present.
-        Body cannot set status, checker, number, owner, type, cost or tasks. Validate IDs and configured reviewer
-        limits. Atomic If-Match; increment version.'
+      description: Require owner and draft status. PATCH omission preserves fields; null clears scalar/reference/cost
+        fields; arrays replace selections. Empty PATCH is 422. Require nonblank names when supplied; start <= end;
+        active assigned locations; eligible active reviewers. Costs are nonnegative exact IDR decimal strings with
+        two digits after the decimal point. Reject unknown/server-owned fields. If-Match and version increment are
+        atomic.
       x-allowed-roles: submitter (owner)
       parameters:
       - name: submissionId
@@ -903,7 +1076,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -913,7 +1086,6 @@ paths:
                 type: string
                 pattern: ^"[1-9][0-9]*"$
               description: Quoted parent submission version.
-              example: '"2"'
           content:
             application/json:
               schema:
@@ -923,7 +1095,11 @@ paths:
                   id: sub_0144
                   programNumber: PRG-2026-0144
                   programName: Bundling September Outlet BSD
-                  programType: null
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
                   locations:
                   - id: loc_bsd
                     code: BSD
@@ -931,7 +1107,9 @@ paths:
                     isActive: true
                   periodStart: '2026-09-06'
                   periodEnd: '2026-09-20'
-                  estimatedCost: null
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
                   owner:
                     id: usr_rizky
                     fullName: Rizky Pratama
@@ -992,6 +1170,10 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
       requestBody:
         required: true
         content:
@@ -1000,17 +1182,20 @@ paths:
               $ref: '#/components/schemas/DraftUpdate'
             example:
               programName: Bundling September Outlet BSD
+              programTypeId: typ_bundling
+              estimatedCost:
+                currency: IDR
+                amount: '42000000.00'
   /program-submissions/{submissionId}/policy:
     get:
       operationId: getSubmissionPolicy
       tags:
       - Program Submission
       summary: Load server-resolved checker, reviewer limits and upload constraints for this draft.
-      description: 'Allowed roles: submitter (owner). Read only; derives context from the persisted draft locations
-        and caller, so save locations before querying. Checker may be null when mapping is unresolved. routingConfigured
-        describes whether checker routing is configured, not whether all business-policy questions are settled.
-        It does not imply submit is allowed. Limits 2/3 reflect mockup defaults; configurable bounds 1..4/1..5.
-        No management endpoint is specified.'
+      description: 'Owner scope. Resolve Checker from employee.checkerId, requiring an active checker role. routingConfigured
+        reports only this mapping. Initial selected-reviewer limits follow the mockup: one to two Mengetahui and one
+        to three Menyetujui. Return current supported extensions and 10,000,000-byte limit. Full submit blockers are
+        on submission detail.'
       x-allowed-roles: submitter (owner)
       parameters:
       - name: submissionId
@@ -1027,7 +1212,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1051,6 +1236,15 @@ paths:
                   - .pdf
                   - .xls
                   - .xlsx
+                  - .xlsm
+                  - .xlsb
+                  - .xlt
+                  - .xltx
+                  - .xltm
+                  - .xla
+                  - .xlam
+                  - .xlw
+                  - .xlm
                   maxAttachmentBytes: 10000000
                   routingConfigured: true
                 meta:
@@ -1071,16 +1265,19 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /program-submissions/{submissionId}/reviewer-options:
     get:
       operationId: listReviewerOptions
       tags:
       - Program Submission
       summary: List eligible reviewers for the selected draft and stage.
-      description: 'Allowed roles: submitter (owner). Only acknowledgement/approval are selectable; checker is server-assigned.
-        Use authorized directory data, not arbitrary users. If the eligibility policy is unconfigured, return 409
-        REVIEWER_POLICY_UNRESOLVED; never expose an unrestricted directory. Active eligibility is rechecked on draft
-        writes and submit. Ordering is fullName then id.'
+      description: Owner scope. stage is required and must be acknowledgement or approval. Return active people with
+        the matching role and an explicit ReviewerEligibility grant for this employee. Search fullName/jobTitle; this
+        is not an employee directory. Selection array order becomes the sequential approval order.
       x-allowed-roles: submitter (owner)
       parameters:
       - name: submissionId
@@ -1097,6 +1294,7 @@ paths:
           type: integer
           minimum: 1
           default: 1
+          maximum: 2147483647
         description: 1-based page.
         example: 1
       - name: pageSize
@@ -1125,6 +1323,7 @@ paths:
         schema:
           type: string
           maxLength: 100
+          minLength: 1
         description: Case-insensitive substring of fullName/jobTitle.
       responses:
         '200':
@@ -1133,7 +1332,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1175,18 +1374,22 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /program-submissions/{submissionId}/attachments:
     post:
       operationId: uploadAttachment
       tags:
       - Program Submission
       summary: Upload one PDF/Excel attachment to an owned draft.
-      description: 'Allowed roles: submitter (owner). multipart/form-data with exactly one file part; no client
-        storage URL. Enforce <= 10,000,000 bytes (A4), extension, detected format and authorization before accepting.
-        Save quarantined attachment as pending, increment parent version and return 202. Scanner later marks clean/rejected
-        and increments parent version again; read metadata to poll. No download or submit while pending/rejected
-        files remain. Draft-only; atomically recheck version/status after streaming.'
-      x-allowed-roles: submitter (owner)
+      description: Owner and draft only. Exactly one multipart file, 1–10,000,000 bytes; require If-Match and Idempotency-Key.
+        Validate supported PDF/Excel extension and container, bound expanded ZIP size to 100 MB and 10,000 entries,
+        ignore claimed MIME. Store private random-key bytes with checksum; respond 202 pending. Worker scans with
+        ClamAV before release. Encrypted/uninspectable files remain quarantined; malformed or infected documents are
+        rejected. No macros or formulas execute. Fingerprint filename, detected MIME and SHA-256 for identical multipart
+        retries. Pending/rejected attachments block submit until clean or removed.
       parameters:
       - name: submissionId
         in: path
@@ -1213,6 +1416,7 @@ paths:
           maxLength: 128
         description: Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours.
         example: sales-example-key-0001
+      x-allowed-roles: submitter (owner)
       responses:
         '202':
           description: Successful operation.
@@ -1220,7 +1424,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1230,13 +1434,10 @@ paths:
                 type: string
                 pattern: ^"[1-9][0-9]*"$
               description: Quoted parent submission version.
-              example: '"3"'
             Location:
               schema:
                 type: string
-                format: uri-reference
-              description: Created resource metadata URI.
-              example: /api/v1/program-submissions/sub_0144/attachments/att_proposal
+              description: Relative URL of the created resource.
           content:
             application/json:
               schema:
@@ -1280,32 +1481,24 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
-              type: object
-              additionalProperties: false
-              properties:
-                file:
-                  type: string
-                  format: binary
-                  description: One .pdf, .xls or .xlsx file; <=10,000,000 bytes.
-              required:
-              - file
-            encoding:
-              file:
-                contentType: application/pdf, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+              $ref: '#/components/schemas/MultipartUpload'
   /program-submissions/{submissionId}/attachments/{attachmentId}:
     get:
       operationId: getMyAttachment
       tags:
       - Program Submission
       summary: Read attachment metadata and scan status.
-      description: 'Allowed roles: submitter (owner). Authorize parent and verify attachment belongs to it; removed
-        attachments return 404. Does not expose object storage keys or scan internals. This metadata GET has no
-        ETag; fetch parent detail for its current version.'
+      description: Owner scope and matching, nonremoved attachment. Metadata can be read while pending or rejected;
+        internal storage paths, hashes and scanner diagnostics are never returned.
       x-allowed-roles: submitter (owner)
       parameters:
       - name: submissionId
@@ -1329,7 +1522,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1363,15 +1556,18 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
     delete:
       operationId: removeAttachment
       tags:
       - Program Submission
       summary: Remove an attachment from an owned draft.
-      description: 'Allowed roles: submitter (owner). Draft only; remove the association and increment parent version
-        atomically. Blob cleanup follows retention policy. Exact retries with same idempotency key return original
-        result; a removed ID with a different key returns 404. Never remove historical submitted documents through
-        this operation.'
+      description: Owner and draft only; no body. Require parent If-Match and Idempotency-Key. Soft-remove attachment
+        and increment parent version atomically. Replaying the same request returns its original success. Removed
+        bytes remain private pending a retention policy; no download remains available.
       x-allowed-roles: submitter (owner)
       parameters:
       - name: submissionId
@@ -1413,7 +1609,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1423,7 +1619,6 @@ paths:
                 type: string
                 pattern: ^"[1-9][0-9]*"$
               description: Quoted parent submission version.
-              example: '"4"'
           content:
             application/json:
               schema:
@@ -1455,15 +1650,19 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /program-submissions/{submissionId}/attachments/{attachmentId}/content:
     get:
       operationId: downloadMyAttachment
       tags:
       - Program Submission
       summary: Download an authorized, clean attachment.
-      description: 'Allowed roles: submitter (owner). Authorize parent on every request and ensure attachment membership.
-        Only clean files; pending/rejected => 409 ATTACHMENT_NOT_READY. Stream from private storage with sanitized
-        Content-Disposition: attachment and nosniff. No public or permanent URL.'
+      description: 'Owner scope and matching, nonremoved, clean attachment. Otherwise 404 outside scope or 409 ATTACHMENT_NOT_READY.
+        Stream bytes with Content-Disposition: attachment and detected MIME; audit the download. Missing storage returns
+        503.'
       x-allowed-roles: submitter (owner)
       parameters:
       - name: submissionId
@@ -1482,12 +1681,12 @@ paths:
         example: att_proposal
       responses:
         '200':
-          description: Binary document.
+          description: Successful operation.
           headers:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1495,21 +1694,9 @@ paths:
             Content-Disposition:
               schema:
                 type: string
-              example: attachment; filename="submission.pdf"
-            X-Content-Type-Options:
-              schema:
-                type: string
-                const: nosniff
+              description: attachment; filename is sanitized.
           content:
-            application/pdf:
-              schema:
-                type: string
-                format: binary
-            application/vnd.ms-excel:
-              schema:
-                type: string
-                format: binary
-            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+            application/octet-stream:
               schema:
                 type: string
                 format: binary
@@ -1529,17 +1716,20 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /program-submissions/{submissionId}/pdf:
     get:
       operationId: downloadMySubmissionPdf
       tags:
       - Program Submission
       summary: Render a printable submission form from a consistent saved snapshot.
-      description: 'Allowed roles: submitter (owner). PDF is an output recommendation (A5); mockup uses window.print().
-        Render saved fields, all selected reviewers and recorded decisions, marking draft/pending clearly. A visual
-        approval stamp is not a cryptographic signature. Do not embed attachment bytes. Authorize before rendering;
-        missing template configuration => 503.'
-      x-allowed-roles: submitter (owner)
+      description: Owner scope. Generate application/pdf from a consistent saved form, escaped text, all review notes,
+        statuses and event-bound account signature images. Draft PDF is unsigned and marked draft. Submit freezes
+        proposer signature; each approve freezes that reviewer signature. Missing/corrupt historical signature bytes
+        fail closed with 503. Does not expose raw signature assets or claim certificate-based digital signing.
       parameters:
       - name: submissionId
         in: path
@@ -1548,14 +1738,15 @@ paths:
           $ref: '#/components/schemas/Id'
         description: Immutable submissionId.
         example: sub_0144
+      x-allowed-roles: submitter (owner)
       responses:
         '200':
-          description: Binary document.
+          description: Successful operation.
           headers:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1563,11 +1754,7 @@ paths:
             Content-Disposition:
               schema:
                 type: string
-              example: attachment; filename="submission.pdf"
-            X-Content-Type-Options:
-              schema:
-                type: string
-                const: nosniff
+              description: attachment; filename is sanitized.
           content:
             application/pdf:
               schema:
@@ -1587,17 +1774,21 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /backoffice/program-submissions/{submissionId}/attachments/{attachmentId}/content:
     get:
       operationId: downloadBackofficeAttachment
       tags:
       - Backoffice
       summary: Download an authorized, clean attachment.
-      description: 'Allowed roles: checker / acknowledger / approver (current ready task assignee). Authorize parent
-        on every request and ensure attachment membership. Only clean files; pending/rejected => 409 ATTACHMENT_NOT_READY.
-        Stream from private storage with sanitized Content-Disposition: attachment and nosniff. No public or permanent
-        URL.'
-      x-allowed-roles: checker / acknowledger / approver (current ready task assignee)
+      description: Require matching reviewer role and a ready or completed approved/rejected task on the parent. Waiting/voided-only
+        assignments confer no access. File must belong to parent, be nonremoved and clean. Stream as attachment and
+        audit; 409 while unready, 404 outside scope, 503 when storage is unavailable.
+      x-allowed-roles: checker / acknowledger / approver with a current ready OR completed approved/rejected task
+        assigned to them
       parameters:
       - name: submissionId
         in: path
@@ -1615,12 +1806,12 @@ paths:
         example: att_proposal
       responses:
         '200':
-          description: Binary document.
+          description: Successful operation.
           headers:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1628,21 +1819,9 @@ paths:
             Content-Disposition:
               schema:
                 type: string
-              example: attachment; filename="submission.pdf"
-            X-Content-Type-Options:
-              schema:
-                type: string
-                const: nosniff
+              description: attachment; filename is sanitized.
           content:
-            application/pdf:
-              schema:
-                type: string
-                format: binary
-            application/vnd.ms-excel:
-              schema:
-                type: string
-                format: binary
-            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+            application/octet-stream:
               schema:
                 type: string
                 format: binary
@@ -1662,17 +1841,19 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /backoffice/program-submissions/{submissionId}/pdf:
     get:
       operationId: downloadBackofficeSubmissionPdf
       tags:
       - Backoffice
       summary: Render a printable submission form from a consistent saved snapshot.
-      description: 'Allowed roles: checker / acknowledger / approver (current ready task assignee). PDF is an output
-        recommendation (A5); mockup uses window.print(). Render saved fields, all selected reviewers and recorded
-        decisions, marking draft/pending clearly. A visual approval stamp is not a cryptographic signature. Do not
-        embed attachment bytes. Authorize before rendering; missing template configuration => 503.'
-      x-allowed-roles: checker / acknowledger / approver (current ready task assignee)
+      description: Current ready or completed approved/rejected task assignee with matching role. Generate the same
+        saved form and every review note with event-bound signature images; task state distinguishes approved/rejected/waiting.
+        Missing signature storage returns 503; no global administrator bypass.
       parameters:
       - name: submissionId
         in: path
@@ -1681,14 +1862,16 @@ paths:
           $ref: '#/components/schemas/Id'
         description: Immutable submissionId.
         example: sub_0144
+      x-allowed-roles: checker / acknowledger / approver with a current ready OR completed approved/rejected task
+        assigned to them
       responses:
         '200':
-          description: Binary document.
+          description: Successful operation.
           headers:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1696,11 +1879,7 @@ paths:
             Content-Disposition:
               schema:
                 type: string
-              example: attachment; filename="submission.pdf"
-            X-Content-Type-Options:
-              schema:
-                type: string
-                const: nosniff
+              description: attachment; filename is sanitized.
           content:
             application/pdf:
               schema:
@@ -1720,16 +1899,350 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+  /program-submissions/{submissionId}/submit:
+    post:
+      operationId: submitSubmission
+      tags:
+      - Program Submission
+      summary: Freeze draft content and start the review chain.
+      description: Owner and draft only; require If-Match and Idempotency-Key. Require name, at least one active assigned
+        location, both ordered dates, active Checker mapping, one to two eligible Mengetahui and one to three eligible
+        Menyetujui. Attachments are optional; every retained attachment must be clean. Require provisioned proposer
+        signature. Snapshot identity, master labels, routing, policy and signature; create ordered tasks and activate
+        Checker only. Multiple people approve sequentially. Missing type/cost is blocked with 409 WORKFLOW_POLICY_UNRESOLVED
+        until requiredness is configured; complete values work now. Unconfirmed self-approval/cross-stage duplicates
+        block submit. No automatic reassignment or revision.
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+        description: Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent
+          submission version.
+        example: '"4"'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+        description: Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours.
+        example: sales-example-key-0001
+      x-allowed-roles: submitter (owner)
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Server-generated correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+              example:
+                data:
+                  id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling September Outlet BSD
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: pendingChecker
+                  currentStage: checker
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-21T03:10:00Z'
+                  submittedAt: '2026-08-21T03:10:00Z'
+                  version: 5
+                  myActiveTaskIds: []
+                  reviewPlan:
+                    checker:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    acknowledgers:
+                    - id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    approvers:
+                    - id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                  reviewTasks:
+                  - id: tsk_checker
+                    stage: checker
+                    reviewer:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    position: 1
+                    status: ready
+                    decidedAt: null
+                    note: null
+                  - id: tsk_know
+                    stage: acknowledgement
+                    reviewer:
+                      id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    position: 1
+                    status: waiting
+                    decidedAt: null
+                    note: null
+                  - id: tsk_approve
+                    stage: approval
+                    reviewer:
+                      id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                    position: 1
+                    status: waiting
+                    decidedAt: null
+                    note: null
+                  attachments:
+                  - id: att_proposal
+                    submissionId: sub_0144
+                    fileName: Proposal Program.pdf
+                    contentType: application/pdf
+                    sizeBytes: 1800000
+                    scanStatus: clean
+                    uploadedAt: '2026-08-21T03:06:00Z'
+                  allowedActions:
+                  - downloadPdf
+                  submissionIssues: []
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '412':
+          $ref: '#/components/responses/412'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '428':
+          $ref: '#/components/responses/428'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+            example: {}
+  /program-submissions/{submissionId}/cancel:
+    post:
+      operationId: cancelSubmission
+      tags:
+      - Program Submission
+      summary: Cancel an owned program when its source state is explicitly authorized.
+      description: Proposer only. Implemented but disabled by an empty cancellation-state allowlist until R7 is answered.
+        Returns 409 WORKFLOW_POLICY_UNRESOLVED in the initial configuration. When authorized states are configured,
+        require If-Match, Idempotency-Key and a nonblank reason (provisional requirement), set cancelled, close the
+        submission and void remaining tasks atomically. Keep files/history private and immutable. The success example
+        assumes draft cancellation has explicitly been enabled; it is not the initial behavior.
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+        description: Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent
+          submission version.
+        example: '"1"'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+        description: Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours.
+        example: sales-example-key-0001
+      x-allowed-roles: submitter (owner) only
+      x-policy-gate: 'R7: no source states are enabled by default.'
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Server-generated correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+              example:
+                data:
+                  id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling Idul Adha Outlet BSD
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: cancelled
+                  currentStage: null
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-21T03:05:00Z'
+                  submittedAt: null
+                  version: 2
+                  myActiveTaskIds: []
+                  reviewPlan:
+                    checker:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    acknowledgers:
+                    - id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    approvers:
+                    - id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                  reviewTasks: []
+                  attachments: []
+                  allowedActions:
+                  - downloadPdf
+                  submissionIssues: []
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '412':
+          $ref: '#/components/responses/412'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '428':
+          $ref: '#/components/responses/428'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+            example:
+              reason: Program tidak jadi dilaksanakan.
   /backoffice/program-submissions:
     get:
       operationId: listBackofficeSubmissions
       tags:
       - Backoffice
       summary: List submissions with a current ready review task assigned to the caller.
-      description: 'Allowed roles: checker / acknowledger / approver. Use EXISTS over ready tasks to avoid duplicate
-        submissions. Role alone is insufficient. Previous/future assignments and completed submissions do not enter
-        this inbox. backofficeAdmin alone confers no access; Q8 must settle broader visibility. Period filter explicitly
-        targets execution start date as a proposed convention (A2).'
+      description: Require checker, acknowledger or approver role. Inbox contains only submissions where the caller
+        has a ready task in that matching role. Waiting tasks and another reviewer’s tasks confer no access. Search/filter/sort
+        operate only within this scope; one submission per result.
       x-allowed-roles: checker / acknowledger / approver
       parameters:
       - name: page
@@ -1739,6 +2252,7 @@ paths:
           type: integer
           minimum: 1
           default: 1
+          maximum: 2147483647
         description: 1-based page.
         example: 1
       - name: pageSize
@@ -1757,15 +2271,15 @@ paths:
         schema:
           type: string
           maxLength: 100
-        description: Trimmed, case-insensitive literal substring of program number or program name; no wildcard
-          syntax.
+          minLength: 1
+        description: Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax.
         example: Bundling
       - name: programNumber
         in: query
         required: false
         schema:
           type: string
-          maxLength: 64
+          maxLength: 200
         description: Exact program number; combines with q using AND.
         example: PRG-2026-0144
       - name: status
@@ -1775,8 +2289,7 @@ paths:
           type: array
           items:
             $ref: '#/components/schemas/SubmissionStatus'
-          uniqueItems: true
-          maxItems: 7
+          maxItems: 100
         description: Repeat key for multiple statuses; OR within this filter.
         style: form
         explode: true
@@ -1787,7 +2300,6 @@ paths:
           type: array
           items:
             $ref: '#/components/schemas/Id'
-          uniqueItems: true
           maxItems: 100
         description: Repeat key; submission must match at least one selected location.
         style: form
@@ -1825,7 +2337,6 @@ paths:
           type: array
           items:
             $ref: '#/components/schemas/Id'
-          uniqueItems: true
           maxItems: 100
         description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
           scope.
@@ -1838,7 +2349,6 @@ paths:
           type: array
           items:
             $ref: '#/components/schemas/Id'
-          uniqueItems: true
           maxItems: 100
         description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
           scope.
@@ -1851,7 +2361,6 @@ paths:
           type: array
           items:
             $ref: '#/components/schemas/Id'
-          uniqueItems: true
           maxItems: 100
         description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
           scope.
@@ -1878,7 +2387,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1892,7 +2401,11 @@ paths:
                 - id: sub_0144
                   programNumber: PRG-2026-0144
                   programName: Bundling September Outlet BSD
-                  programType: null
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
                   locations:
                   - id: loc_bsd
                     code: BSD
@@ -1900,7 +2413,9 @@ paths:
                     isActive: true
                   periodStart: '2026-09-06'
                   periodEnd: '2026-09-20'
-                  estimatedCost: null
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
                   owner:
                     id: usr_rizky
                     fullName: Rizky Pratama
@@ -1934,17 +2449,239 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+  /backoffice/review-history:
+    get:
+      operationId: listReviewHistory
+      tags:
+      - Backoffice
+      summary: List the caller’s completed review assignments on a separate history page.
+      description: Require reviewer role. Include submissions with a completed approved/rejected task assigned to
+        caller in that matching role, even if the program is still awaiting others. Waiting/voided tasks alone are
+        excluded. Shared detail remains readable, with all review notes; only genuinely ready tasks may be acted on.
+      x-allowed-roles: checker / acknowledger / approver
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          maximum: 2147483647
+        description: 1-based page.
+        example: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
+        example: 20
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 1
+        description: Trimmed, case-insensitive literal substring of program number or program name; no wildcard syntax.
+        example: Bundling
+      - name: programNumber
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+        description: Exact program number; combines with q using AND.
+        example: PRG-2026-0144
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionStatus'
+          maxItems: 100
+        description: Repeat key for multiple statuses; OR within this filter.
+        style: form
+        explode: true
+      - name: locationId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          maxItems: 100
+        description: Repeat key; submission must match at least one selected location.
+        style: form
+        explode: true
+      - name: programTypeId
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Exact type ID; submissions with unknown type do not match.
+      - name: periodStartFrom
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Inclusive lower bound on execution periodStart; not submittedAt.
+      - name: periodStartTo
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Inclusive upper bound on execution periodStart; lower bound must not exceed upper bound.
+      - name: ownerId
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Exact submitter ID.
+      - name: checkerId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          maxItems: 100
+        description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
+          scope.
+        style: form
+        explode: true
+      - name: acknowledgerId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          maxItems: 100
+        description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
+          scope.
+        style: form
+        explode: true
+      - name: approverId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          maxItems: 100
+        description: Repeat key; match any selected reviewer in this stage of the saved plan. Never widens the caller
+          scope.
+        style: form
+        explode: true
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - -createdAt
+          - createdAt
+          - -updatedAt
+          - updatedAt
+          - programNumber
+          default: -createdAt
+        description: Default -createdAt; append id ascending internally as a stable tie-breaker.
+        example: -createdAt
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Server-generated correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionListResponse'
+              example:
+                data:
+                - id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling September Outlet BSD
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: approved
+                  currentStage: null
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-24T03:00:00Z'
+                  submittedAt: '2026-08-21T03:10:00Z'
+                  version: 8
+                  myActiveTaskIds: []
+                meta:
+                  requestId: req_01salesdesign
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+                  hasNextPage: false
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '422':
+          $ref: '#/components/responses/422'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /backoffice/program-submissions/{submissionId}:
     get:
       operationId: getBackofficeSubmission
       tags:
       - Backoffice
       summary: Read submission details for a current task, including progress and decision targets.
-      description: 'Allowed roles: checker / acknowledger / approver (current ready task assignee). Enforce ready-task
-        assignment, not global admin status; 404 outside scope. myActiveTaskIds and ready tasks identify taskId
-        for the candidate decision endpoints. After acting, refresh the inbox; do not assume continued access to
-        the detail (Q8). This read contract can expose existing state while transition operations remain provisional.'
-      x-allowed-roles: checker / acknowledger / approver (current ready task assignee)
+      description: Require matching reviewer role and a ready or completed approved/rejected task assigned to caller.
+        Return 404 otherwise. Completed participants retain read access to all notes through later stages; completed
+        tasks do not grant decision authority. No staff/superuser/global-admin bypass.
+      x-allowed-roles: checker / acknowledger / approver with a current ready task OR a completed approved/rejected
+        task assigned to them
       parameters:
       - name: submissionId
         in: path
@@ -1960,7 +2697,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -1970,7 +2707,6 @@ paths:
                 type: string
                 pattern: ^"[1-9][0-9]*"$
               description: Quoted parent submission version.
-              example: '"5"'
           content:
             application/json:
               schema:
@@ -1980,7 +2716,11 @@ paths:
                   id: sub_0144
                   programNumber: PRG-2026-0144
                   programName: Bundling September Outlet BSD
-                  programType: null
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
                   locations:
                   - id: loc_bsd
                     code: BSD
@@ -1988,7 +2728,9 @@ paths:
                     isActive: true
                   periodStart: '2026-09-06'
                   periodEnd: '2026-09-20'
-                  estimatedCost: null
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
                   owner:
                     id: usr_rizky
                     fullName: Rizky Pratama
@@ -2074,15 +2816,19 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
   /backoffice/filter-options/people:
     get:
       operationId: listBackofficeFilterPeople
       tags:
       - Backoffice
       summary: Populate submitter and reviewer person filters without an unrestricted directory.
-      description: 'Allowed roles: checker / acknowledger / approver. Return distinct people referenced in submissions
-        in the caller current inbox, before optional filters. field selects owner/checker/acknowledger/approver.
-        Names and job title only; no email or employee number. Same role and assignment scope as inbox.'
+      description: Require reviewer role. field selects owner/checker/acknowledger/approver, scope selects inbox/history.
+        Only people attached to the caller’s scoped submissions appear. Search fullName/jobTitle. Never exposes the
+        global employee directory.
       x-allowed-roles: checker / acknowledger / approver
       parameters:
       - name: page
@@ -2092,6 +2838,7 @@ paths:
           type: integer
           minimum: 1
           default: 1
+          maximum: 2147483647
         description: 1-based page.
         example: 1
       - name: pageSize
@@ -2122,7 +2869,19 @@ paths:
         schema:
           type: string
           maxLength: 100
+          minLength: 1
         description: Case-insensitive substring of fullName/jobTitle.
+      - name: scope
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - inbox
+          - history
+          default: inbox
+        description: Choose the authorized current-work or completed-assignment dataset for filter options.
+        example: inbox
       responses:
         '200':
           description: Successful operation.
@@ -2130,7 +2889,7 @@ paths:
             X-Request-Id:
               schema:
                 type: string
-              description: Correlation ID.
+              description: Server-generated correlation ID.
             Cache-Control:
               schema:
                 type: string
@@ -2165,6 +2924,641 @@ paths:
           $ref: '#/components/responses/500'
         '503':
           $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+  /backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/approve:
+    post:
+      operationId: approveReviewTask
+      tags:
+      - Backoffice
+      summary: Record approval for exactly one assigned review task.
+      description: Require task-parent match, current ready assignee and matching reviewer role. If-Match and Idempotency-Key
+        protect the atomic transition. Provisioned account signature is required and snapshotted with decision time
+        and optional note. Advance one person at a time, first Checker, then all Mengetahui, then all Menyetujui.
+        Final approval closes program as approved. Tasks and submitted content cannot be edited. Backend owns next
+        status; actor/status/signature bytes are not accepted in body.
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable taskId.
+        example: tsk_approve
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+        description: Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent
+          submission version.
+        example: '"7"'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+        description: Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours.
+        example: sales-example-key-0001
+      x-allowed-roles: Current ready task assignee with matching checker / acknowledger / approver role
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Server-generated correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+              example:
+                data:
+                  id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling September Outlet BSD
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: approved
+                  currentStage: null
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-24T03:00:00Z'
+                  submittedAt: '2026-08-21T03:10:00Z'
+                  version: 8
+                  myActiveTaskIds: []
+                  reviewPlan:
+                    checker:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    acknowledgers:
+                    - id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    approvers:
+                    - id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                  reviewTasks:
+                  - id: tsk_checker
+                    stage: checker
+                    reviewer:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    position: 1
+                    status: approved
+                    decidedAt: '2026-08-22T03:00:00Z'
+                    note: null
+                  - id: tsk_know
+                    stage: acknowledgement
+                    reviewer:
+                      id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    position: 1
+                    status: approved
+                    decidedAt: '2026-08-23T03:00:00Z'
+                    note: null
+                  - id: tsk_approve
+                    stage: approval
+                    reviewer:
+                      id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                    position: 1
+                    status: approved
+                    decidedAt: '2026-08-24T03:00:00Z'
+                    note: Disetujui sesuai proposal.
+                  attachments:
+                  - id: att_proposal
+                    submissionId: sub_0144
+                    fileName: Proposal Program.pdf
+                    contentType: application/pdf
+                    sizeBytes: 1800000
+                    scanStatus: clean
+                    uploadedAt: '2026-08-21T03:06:00Z'
+                  allowedActions:
+                  - downloadPdf
+                  submissionIssues: []
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '412':
+          $ref: '#/components/responses/412'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '428':
+          $ref: '#/components/responses/428'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionRequest'
+            example:
+              note: Disetujui sesuai proposal.
+  /backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/reject:
+    post:
+      operationId: rejectReviewTask
+      tags:
+      - Backoffice
+      summary: Record rejection for exactly one assigned review task.
+      description: Require task-parent match, current ready assignee and matching reviewer role. Proposer rejection
+        is forbidden even with a reviewer role. Require If-Match and Idempotency-Key. Any rejection immediately closes
+        the submission as rejected and voids every remaining task. Optional note is visible to every authorized participant;
+        no signature is applied as an approval. Rejected programs cannot be edited/resubmitted through this API; any
+        future revision flow is deferred.
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable submissionId.
+        example: sub_0144
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+        description: Immutable taskId.
+        example: tsk_approve
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+        description: Quoted submission version from a prior detail/mutation ETag; attachment writes use the parent
+          submission version.
+        example: '"7"'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+        description: Random key for one logical operation; reuse only for an identical retry. Retained for 24 hours.
+        example: sales-example-key-0001
+      x-allowed-roles: Current ready task assignee with matching checker / acknowledger / approver role; proposer
+        excluded
+      responses:
+        '200':
+          description: Successful operation.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Server-generated correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[1-9][0-9]*"$
+              description: Quoted parent submission version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+              example:
+                data:
+                  id: sub_0144
+                  programNumber: PRG-2026-0144
+                  programName: Bundling September Outlet BSD
+                  programType:
+                    id: typ_bundling
+                    code: bundling
+                    name: Bundling
+                    isActive: true
+                  locations:
+                  - id: loc_bsd
+                    code: BSD
+                    name: BSD
+                    isActive: true
+                  periodStart: '2026-09-06'
+                  periodEnd: '2026-09-20'
+                  estimatedCost:
+                    currency: IDR
+                    amount: '42000000.00'
+                  owner:
+                    id: usr_rizky
+                    fullName: Rizky Pratama
+                    jobTitle: Sales Executive
+                  status: rejected
+                  currentStage: null
+                  createdAt: '2026-08-21T03:00:00Z'
+                  updatedAt: '2026-08-24T03:00:00Z'
+                  submittedAt: '2026-08-21T03:10:00Z'
+                  version: 8
+                  myActiveTaskIds: []
+                  reviewPlan:
+                    checker:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    acknowledgers:
+                    - id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    approvers:
+                    - id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                  reviewTasks:
+                  - id: tsk_checker
+                    stage: checker
+                    reviewer:
+                      id: usr_andi
+                      fullName: Andi Setiawan
+                      jobTitle: Supervisor Sales
+                    position: 1
+                    status: approved
+                    decidedAt: '2026-08-22T03:00:00Z'
+                    note: null
+                  - id: tsk_know
+                    stage: acknowledgement
+                    reviewer:
+                      id: usr_dewi
+                      fullName: Dewi Larasati
+                      jobTitle: Branch Manager BSD
+                    position: 1
+                    status: approved
+                    decidedAt: '2026-08-23T03:00:00Z'
+                    note: null
+                  - id: tsk_approve
+                    stage: approval
+                    reviewer:
+                      id: usr_ratna
+                      fullName: Ratna Kusuma
+                      jobTitle: GM Sales & Marketing
+                    position: 1
+                    status: rejected
+                    decidedAt: '2026-08-24T03:00:00Z'
+                    note: Anggaran perlu ditinjau kembali.
+                  attachments:
+                  - id: att_proposal
+                    submissionId: sub_0144
+                    fileName: Proposal Program.pdf
+                    contentType: application/pdf
+                    sizeBytes: 1800000
+                    scanStatus: clean
+                    uploadedAt: '2026-08-21T03:06:00Z'
+                  allowedActions:
+                  - downloadPdf
+                  submissionIssues: []
+                meta:
+                  requestId: req_01salesdesign
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '412':
+          $ref: '#/components/responses/412'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '428':
+          $ref: '#/components/responses/428'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionRequest'
+            example:
+              note: Anggaran perlu ditinjau kembali.
+  /auth/csrf:
+    get:
+      operationId: getCsrfToken
+      tags:
+      - Authentication
+      summary: Bootstrap a browser CSRF token.
+      description: Public read. Sets the CSRF cookie and returns the masked token; use credentials-enabled requests
+        and X-CSRFToken for browser login/refresh/logout. No query parameters.
+      security: []
+      x-allowed-roles: Public
+      parameters: []
+      responses:
+        '200':
+          description: Browser CSRF bootstrap.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Server-generated correlation ID.
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfResponse'
+              example:
+                data:
+                  csrfToken: example-csrf-token-not-a-real-token
+                meta:
+                  requestId: req_example
+        '400':
+          $ref: '#/components/responses/400'
+        '429':
+          $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
+        '503':
+          $ref: '#/components/responses/503'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+  /health/live:
+    get:
+      operationId: healthLive
+      summary: Check application liveness.
+      description: Public, no credentials or request body. Standard HEAD/OPTIONS are provided by DRF. Does not validate
+        migration state.
+      responses:
+        '200':
+          description: Service is ok.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: false
+                    required:
+                    - status
+                    properties:
+                      status:
+                        type: string
+                        const: ok
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+              example:
+                data:
+                  status: ok
+                meta:
+                  requestId: req_example
+        '405':
+          description: This method is not allowed.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: METHOD_NOT_ALLOWED
+                  message: This method is not allowed.
+                  details: []
+                meta:
+                  requestId: req_example
+        '406':
+          description: The requested response format is unavailable.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: NOT_ACCEPTABLE
+                  message: The requested response format is unavailable.
+                  details: []
+                meta:
+                  requestId: req_example
+      tags:
+      - Health
+      security: []
+      x-allowed-roles: Public
+  /health/ready:
+    get:
+      operationId: healthReady
+      summary: Check MySQL connectivity.
+      description: Public, no credentials or request body. Standard HEAD/OPTIONS are provided by DRF. Does not validate
+        migration state.
+      responses:
+        '200':
+          description: Service is ready.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: false
+                    required:
+                    - status
+                    - database
+                    properties:
+                      status:
+                        type: string
+                        const: ready
+                      database:
+                        type: string
+                        const: ok
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+              example:
+                data:
+                  status: ready
+                  database: ok
+                meta:
+                  requestId: req_example
+        '405':
+          description: This method is not allowed.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: METHOD_NOT_ALLOWED
+                  message: This method is not allowed.
+                  details: []
+                meta:
+                  requestId: req_example
+        '406':
+          description: The requested response format is unavailable.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: NOT_ACCEPTABLE
+                  message: The requested response format is unavailable.
+                  details: []
+                meta:
+                  requestId: req_example
+        '503':
+          description: The service is temporarily unavailable.
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Retry-After:
+              schema:
+                type: integer
+                const: 5
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: SERVICE_UNAVAILABLE
+                  message: The service is temporarily unavailable.
+                  details: []
+                meta:
+                  requestId: req_example
+      tags:
+      - Health
+      security: []
+      x-allowed-roles: Public
 components:
   securitySchemes:
     bearerAuth:
@@ -2307,11 +3701,11 @@ components:
           $ref: '#/components/schemas/Id'
         fullName:
           type: string
-          minLength: 1
+          minLength: 0
           maxLength: 150
         employeeNumber:
           type: string
-          minLength: 1
+          minLength: 0
           maxLength: 50
         email:
           type: string
@@ -2339,6 +3733,10 @@ components:
           items:
             $ref: '#/components/schemas/Id'
           uniqueItems: true
+        checkerId:
+          anyOf:
+          - $ref: '#/components/schemas/Id'
+          - type: 'null'
       required:
       - id
       - fullName
@@ -2349,6 +3747,7 @@ components:
       - roles
       - timeZone
       - locationIds
+      - checkerId
     Location:
       type: object
       additionalProperties: false
@@ -2471,10 +3870,9 @@ components:
           maxLength: 255
         contentType:
           type: string
-          enum:
-          - application/pdf
-          - application/vnd.ms-excel
-          - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+          minLength: 1
+          description: Detected PDF or Excel media type. Support is not limited to the original three extensions;
+            see R6 for format-policy implementation details.
         sizeBytes:
           type: integer
           minimum: 1
@@ -2737,6 +4135,14 @@ components:
             $ref: '#/components/schemas/Id'
           uniqueItems: true
           maxItems: 5
+        programTypeId:
+          anyOf:
+          - $ref: '#/components/schemas/Id'
+          - type: 'null'
+        estimatedCost:
+          anyOf:
+          - $ref: '#/components/schemas/Money'
+          - type: 'null'
       required: []
     DraftUpdate:
       type: object
@@ -2776,6 +4182,14 @@ components:
             $ref: '#/components/schemas/Id'
           uniqueItems: true
           maxItems: 5
+        programTypeId:
+          anyOf:
+          - $ref: '#/components/schemas/Id'
+          - type: 'null'
+        estimatedCost:
+          anyOf:
+          - $ref: '#/components/schemas/Money'
+          - type: 'null'
       required: []
       minProperties: 1
     LoginRequest:
@@ -2790,6 +4204,12 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+        clientType:
+          type: string
+          enum:
+          - native
+          - web
+          default: native
       required:
       - email
       - password
@@ -2801,38 +4221,9 @@ components:
           type: string
           minLength: 32
           maxLength: 2048
-      required:
-      - refreshToken
-    Session:
-      type: object
-      additionalProperties: false
-      properties:
-        accessToken:
-          type: string
-        tokenType:
-          type: string
-          enum:
-          - Bearer
-        expiresIn:
-          type: integer
-          minimum: 1
-        refreshToken:
-          type: string
-        refreshExpiresAt:
-          type: string
-          format: date-time
-        sessionId:
-          $ref: '#/components/schemas/Id'
-        user:
-          $ref: '#/components/schemas/User'
-      required:
-      - accessToken
-      - tokenType
-      - expiresIn
-      - refreshToken
-      - refreshExpiresAt
-      - sessionId
-      - user
+      required: []
+      description: Native clients supply refreshToken. Web clients send an empty object and the HttpOnly sales_refresh
+        cookie with X-CSRFToken. Exactly one transport is required.
     LogoutResult:
       type: object
       additionalProperties: false
@@ -2912,10 +4303,7 @@ components:
           type: array
           items:
             type: string
-            enum:
-            - .pdf
-            - .xls
-            - .xlsx
+            pattern: ^\.[a-z0-9]+$
           uniqueItems: true
         maxAttachmentBytes:
           const: 10000000
@@ -2948,39 +4336,6 @@ components:
       - id
       - fullName
       - jobTitle
-    RegistrationRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        fullName:
-          type: string
-          minLength: 1
-          maxLength: 150
-        employeeNumber:
-          type: string
-          minLength: 1
-          maxLength: 50
-        email:
-          type: string
-          format: email
-          maxLength: 254
-        password:
-          type: string
-          minLength: 15
-          maxLength: 128
-      required:
-      - fullName
-      - employeeNumber
-      - email
-      - password
-    RegistrationReceipt:
-      type: object
-      additionalProperties: false
-      properties:
-        message:
-          type: string
-      required:
-      - message
     DecisionRequest:
       type: object
       additionalProperties: false
@@ -3006,42 +4361,6 @@ components:
           maxLength: 2000
       required:
       - reason
-    Dashboard:
-      type: object
-      additionalProperties: false
-      properties:
-        scope:
-          type: string
-          enum:
-          - myActiveTasks
-        generatedAt:
-          type: string
-          format: date-time
-        totalSubmissions:
-          type: integer
-          minimum: 0
-        byStage:
-          type: object
-          additionalProperties: false
-          properties:
-            checker:
-              type: integer
-              minimum: 0
-            acknowledgement:
-              type: integer
-              minimum: 0
-            approval:
-              type: integer
-              minimum: 0
-          required:
-          - checker
-          - acknowledgement
-          - approval
-      required:
-      - scope
-      - generatedAt
-      - totalSubmissions
-      - byStage
     SessionResponse:
       type: object
       additionalProperties: false
@@ -3195,28 +4514,96 @@ components:
       required:
       - data
       - meta
-    RegistrationResponse:
+    NativeSession:
+      type: object
+      additionalProperties: false
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          enum:
+          - Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+        refreshToken:
+          type: string
+        refreshExpiresAt:
+          type: string
+          format: date-time
+        sessionId:
+          $ref: '#/components/schemas/Id'
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - accessToken
+      - tokenType
+      - expiresIn
+      - refreshToken
+      - refreshExpiresAt
+      - sessionId
+      - user
+    WebSession:
+      type: object
+      additionalProperties: false
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          enum:
+          - Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+        refreshExpiresAt:
+          type: string
+          format: date-time
+        sessionId:
+          $ref: '#/components/schemas/Id'
+        user:
+          $ref: '#/components/schemas/User'
+        csrfToken:
+          type: string
+      required:
+      - accessToken
+      - tokenType
+      - expiresIn
+      - refreshExpiresAt
+      - sessionId
+      - user
+      - csrfToken
+    Session:
+      oneOf:
+      - $ref: '#/components/schemas/NativeSession'
+      - $ref: '#/components/schemas/WebSession'
+    CsrfResponse:
       type: object
       additionalProperties: false
       properties:
         data:
-          $ref: '#/components/schemas/RegistrationReceipt'
+          type: object
+          additionalProperties: false
+          properties:
+            csrfToken:
+              type: string
+          required:
+          - csrfToken
         meta:
           $ref: '#/components/schemas/Meta'
       required:
       - data
       - meta
-    DashboardResponse:
+    MultipartUpload:
       type: object
       additionalProperties: false
       properties:
-        data:
-          $ref: '#/components/schemas/Dashboard'
-        meta:
-          $ref: '#/components/schemas/Meta'
+        file:
+          type: string
+          format: binary
       required:
-      - data
-      - meta
+      - file
   responses:
     '400':
       description: Malformed JSON, unknown parameters, invalid query encoding or missing Idempotency-Key.
@@ -3492,7 +4879,8 @@ components:
             meta:
               requestId: req_01salesdesign
     '503':
-      description: A required service is temporarily unavailable.
+      description: 'SERVICE_UNAVAILABLE: database, scanner-dependent operation or private file storage is unavailable;
+        Retry-After when supplied.'
       headers:
         X-Request-Id:
           schema:
@@ -3518,22 +4906,20 @@ components:
               details: []
             meta:
               requestId: req_01salesdesign
-x-provisional-operations:
-- method: POST
-  path: /auth/register
-  blockedBy: Q1
-- method: POST
-  path: /program-submissions/{submissionId}/submit
-  blockedBy: Q2, Q3, Q4, Q5, Q6
-- method: POST
-  path: /program-submissions/{submissionId}/cancel
-  blockedBy: Q7
-- method: POST
-  path: /backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/approve
-  blockedBy: Q3, Q4
-- method: POST
-  path: /backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/reject
-  blockedBy: Q3, Q4
-- method: GET
-  path: /backoffice/dashboard-summary
-  blockedBy: Q9
+    '405':
+      description: METHOD_NOT_ALLOWED
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '406':
+      description: NOT_ACCEPTABLE
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+x-deferred-features:
+- Public registration; future superadmin account management.
+- Dashboard, reporting, revision and delegated approval flows.
+- Password recovery/change and employee signature replacement UI.
+- Cancellation states, missing type/cost requirements and upload retention need business confirmation.
