@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/providers.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
+import 'submission_status_badge.dart';
 
 class SubmissionDetailScreen extends ConsumerStatefulWidget {
   const SubmissionDetailScreen({super.key, required this.submissionId});
@@ -72,7 +73,7 @@ class _SubmissionDetailScreenState
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      _DetailStatusBadge(status: item.status),
+                      SubmissionStatusBadge(status: item.status),
                       const Spacer(),
                       OutlinedButton.icon(
                         onPressed: null,
@@ -288,40 +289,6 @@ class _DetailRow extends StatelessWidget {
       ],
     ),
   );
-}
-
-class _DetailStatusBadge extends StatelessWidget {
-  const _DetailStatusBadge({required this.status});
-  final String status;
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: status == 'approved'
-          ? const Color(0xFFE8F5ED)
-          : AppColors.softNavy,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
-      child: Text(
-        _label(status),
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: AppColors.navy,
-        ),
-      ),
-    ),
-  );
-  String _label(String value) => switch (value) {
-    'draft' => 'Draft',
-    'pendingChecker' => 'Menunggu Checker',
-    'pendingAcknowledgement' => 'Menunggu Mengetahui',
-    'pendingApproval' => 'Menunggu Persetujuan',
-    'approved' => 'Disetujui',
-    'rejected' => 'Ditolak',
-    _ => value,
-  };
 }
 
 class _AttachmentPlaceholder extends StatelessWidget {

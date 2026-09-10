@@ -6,6 +6,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/network/api_exception.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
+import 'submission_status_badge.dart';
 
 class SubmissionListScreen extends ConsumerStatefulWidget {
   const SubmissionListScreen({super.key});
@@ -371,46 +372,13 @@ class _TableRow extends StatelessWidget {
             width: 160,
             child: Padding(
               padding: const EdgeInsets.only(left: 8),
-              child: _StatusBadge(status: item.status),
+              child: SubmissionStatusBadge(status: item.status, compact: true),
             ),
           ),
         ],
       ),
     ),
   );
-}
-
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
-  final String status;
-  @override
-  Widget build(BuildContext context) {
-    final label = switch (status) {
-      'draft' => 'Draft',
-      'pendingChecker' => 'Menunggu Checker',
-      'pendingAcknowledgement' => 'Menunggu Mengetahui',
-      'pendingApproval' => 'Menunggu Persetujuan',
-      'approved' => 'Disetujui',
-      'rejected' => 'Ditolak',
-      'cancelled' => 'Dibatalkan',
-      _ => status,
-    };
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: status == 'approved'
-            ? const Color(0xFFE8F5ED)
-            : const Color(0xFFEEF3F6),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-  }
 }
 
 class _EmptySubmissions extends StatelessWidget {
