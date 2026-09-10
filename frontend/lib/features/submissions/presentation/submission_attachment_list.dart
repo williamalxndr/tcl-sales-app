@@ -9,10 +9,14 @@ class SubmissionAttachmentList extends StatelessWidget {
     required this.attachments,
     this.onRemove,
     this.removingAttachmentId,
+    this.onDownload,
+    this.downloadingAttachmentId,
   });
   final List<SubmissionAttachment> attachments;
   final ValueChanged<SubmissionAttachment>? onRemove;
   final String? removingAttachmentId;
+  final ValueChanged<SubmissionAttachment>? onDownload;
+  final String? downloadingAttachmentId;
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +44,9 @@ class SubmissionAttachmentList extends StatelessWidget {
                 onRemove: onRemove,
                 isRemoving: removingAttachmentId == attachment.id,
                 isRemovalInProgress: removingAttachmentId != null,
+                onDownload: onDownload,
+                isDownloading: downloadingAttachmentId == attachment.id,
+                isDownloadInProgress: downloadingAttachmentId != null,
               ),
             ),
           )
@@ -54,11 +61,17 @@ class _AttachmentRow extends StatelessWidget {
     required this.onRemove,
     required this.isRemoving,
     required this.isRemovalInProgress,
+    required this.onDownload,
+    required this.isDownloading,
+    required this.isDownloadInProgress,
   });
   final SubmissionAttachment attachment;
   final ValueChanged<SubmissionAttachment>? onRemove;
   final bool isRemoving;
   final bool isRemovalInProgress;
+  final ValueChanged<SubmissionAttachment>? onDownload;
+  final bool isDownloading;
+  final bool isDownloadInProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -138,6 +151,29 @@ class _AttachmentRow extends StatelessWidget {
                 ),
               ),
             ),
+            if (onDownload != null && attachment.scanStatus == 'clean') ...[
+              const SizedBox(width: 2),
+              Semantics(
+                button: true,
+                label: isDownloading
+                    ? 'Mengunduh ${attachment.fileName}'
+                    : 'Unduh ${attachment.fileName}',
+                child: IconButton(
+                  tooltip: 'Unduh lampiran',
+                  onPressed: isDownloadInProgress
+                      ? null
+                      : () => onDownload!(attachment),
+                  icon: isDownloading
+                      ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download_outlined, size: 19),
+                  color: AppColors.navy,
+                ),
+              ),
+            ],
             if (onRemove != null) ...[
               const SizedBox(width: 2),
               Semantics(

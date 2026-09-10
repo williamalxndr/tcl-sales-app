@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/di/providers.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/platform/downloaded_file_saver.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
 import 'submission_attachment_list.dart';
@@ -40,6 +41,7 @@ class _SubmissionEditorScreenState
   bool _savingReviewPlan = false;
   bool _uploading = false;
   String? _removingAttachmentId;
+  String? _downloadingAttachmentId;
 
   @override
   void initState() {
@@ -321,6 +323,34 @@ class _SubmissionEditorScreenState
     }
   }
 
+  Future<void> _downloadAttachment(SubmissionAttachment attachment) async {
+    setState(() => _downloadingAttachmentId = attachment.id);
+    try {
+      final download = await ref
+          .read(submissionRepositoryProvider)
+          .downloadAttachment(widget.submissionId, attachment);
+      await const DownloadedFileSaver().save(
+        bytes: download.bytes,
+        fileName: download.fileName,
+        contentType: download.contentType,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${download.fileName} berhasil diunduh.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lampiran tidak dapat disimpan.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingAttachmentId = null);
+    }
+  }
+
   String _megabytes(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(
     bytes % (1024 * 1024) == 0 ? 0 : 1,
   );
@@ -552,10 +582,16 @@ class _SubmissionEditorScreenState
                                 _draft!.allowedActions.contains(
                                       'removeAttachment',
                                     ) &&
-                                    !_uploading
+                                    !_uploading &&
+                                    _downloadingAttachmentId == null
                                 ? _removeAttachment
                                 : null,
                             removingAttachmentId: _removingAttachmentId,
+                            onDownload:
+                                _uploading || _removingAttachmentId != null
+                                ? null
+                                : _downloadAttachment,
+                            downloadingAttachmentId: _downloadingAttachmentId,
                           ),
                           const SizedBox(height: 12),
                           OutlinedButton.icon(

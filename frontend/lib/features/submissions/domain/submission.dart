@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class SubmissionSummary {
   const SubmissionSummary({
     required this.id,
@@ -229,6 +231,18 @@ class AttachmentRemovalResult {
       submissionVersion: json['submissionVersion'] as int? ?? 0,
     );
   }
+}
+
+class AttachmentDownload {
+  const AttachmentDownload({
+    required this.bytes,
+    required this.fileName,
+    required this.contentType,
+  });
+
+  final Uint8List bytes;
+  final String fileName;
+  final String contentType;
 }
 
 class ReviewPlan {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -23,6 +24,14 @@ class ApiResponse<T> {
   final Map<String, dynamic> meta;
   final String? eTag;
   final String? location;
+}
+
+/// Successful binary response, for authorized file downloads.
+class ApiBytesResponse {
+  const ApiBytesResponse({required this.bytes, required this.headers});
+
+  final Uint8List bytes;
+  final Map<String, String> headers;
 }
 
 /// HTTP client for the `/api/v1` envelope.
@@ -74,6 +83,11 @@ class ApiClient {
     );
     return _expectObject(response.data);
   }
+
+  Future<ApiBytesResponse> getBytes(
+    String path, {
+    Map<String, String?> query = const {},
+  }) => _bytesRequest(path, query: query, hasRetried: false);
 
   Future<Map<String, dynamic>> postObject(
     String path, {
@@ -309,6 +323,54 @@ class ApiClient {
           hasRetried: true,
         );
       }
+      throw _apiError(response, decoded.requestId);
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        code: 'TIMEOUT',
+        message: 'Layanan membutuhkan waktu terlalu lama untuk merespons.',
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        code: 'NETWORK_ERROR',
+        message: 'Tidak dapat terhubung ke layanan.',
+      );
+    } on FormatException {
+      throw const ApiException(
+        code: 'INVALID_RESPONSE',
+        message: 'Layanan mengirim respons yang tidak dapat diproses.',
+      );
+    }
+  }
+
+  Future<ApiBytesResponse> _bytesRequest(
+    String path, {
+    required Map<String, String?> query,
+    required bool hasRetried,
+  }) async {
+    try {
+      final request = http.Request('GET', _uriFor(path, query))
+        ..headers.addAll({
+          'Accept': 'application/octet-stream',
+          if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+        });
+      final streamed = await _client.send(request).timeout(timeout);
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(timeout);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiBytesResponse(
+          bytes: response.bodyBytes,
+          headers: Map<String, String>.from(response.headers),
+        );
+      }
+      if (response.statusCode == 401 &&
+          !hasRetried &&
+          await _refreshSession()) {
+        return _bytesRequest(path, query: query, hasRetried: true);
+      }
+      final decoded = _decodeEnvelope(response);
       throw _apiError(response, decoded.requestId);
     } on ApiException {
       rethrow;

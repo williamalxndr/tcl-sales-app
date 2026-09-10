@@ -178,6 +178,38 @@ void main() {
     expect(response['submissionVersion'], 4);
   });
 
+  test('downloads binary attachment content with the session token', () async {
+    final api = ApiClient(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(
+          request.url.path,
+          '/api/v1/program-submissions/sub_0144/attachments/att_001/content',
+        );
+        expect(request.headers['accept'], 'application/octet-stream');
+        expect(request.headers['authorization'], 'Bearer access-token');
+        return http.Response.bytes(
+          [37, 80, 68, 70],
+          200,
+          headers: {
+            'content-type': 'application/pdf',
+            'content-disposition': 'attachment; filename="Proposal.pdf"',
+          },
+        );
+      }),
+    );
+    addTearDown(api.close);
+    api.configureSession(accessToken: 'access-token');
+
+    final response = await api.getBytes(
+      'program-submissions/sub_0144/attachments/att_001/content',
+    );
+
+    expect(response.bytes, [37, 80, 68, 70]);
+    expect(response.headers['content-type'], 'application/pdf');
+  });
+
   test('HTML error pages become a safe client error', () async {
     final api = ApiClient(
       baseUrl: baseUrl,

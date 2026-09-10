@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/platform/downloaded_file_saver.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
 import 'submission_status_badge.dart';
@@ -20,6 +22,7 @@ class SubmissionDetailScreen extends ConsumerStatefulWidget {
 class _SubmissionDetailScreenState
     extends ConsumerState<SubmissionDetailScreen> {
   late Future<_SubmissionDetailData> _future;
+  String? _downloadingAttachmentId;
   @override
   void initState() {
     super.initState();
@@ -33,6 +36,38 @@ class _SubmissionDetailScreenState
         ? await repository.policy(widget.submissionId)
         : null;
     return _SubmissionDetailData(submission: submission, policy: policy);
+  }
+
+  Future<void> _downloadAttachment(SubmissionAttachment attachment) async {
+    setState(() => _downloadingAttachmentId = attachment.id);
+    try {
+      final download = await ref
+          .read(submissionRepositoryProvider)
+          .downloadAttachment(widget.submissionId, attachment);
+      await const DownloadedFileSaver().save(
+        bytes: download.bytes,
+        fileName: download.fileName,
+        contentType: download.contentType,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${download.fileName} berhasil diunduh.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lampiran tidak dapat disimpan.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingAttachmentId = null);
+    }
   }
 
   @override
@@ -232,6 +267,8 @@ class _SubmissionDetailScreenState
                           const SizedBox(height: 9),
                           SubmissionAttachmentList(
                             attachments: item.attachments,
+                            onDownload: _downloadAttachment,
+                            downloadingAttachmentId: _downloadingAttachmentId,
                           ),
                         ],
                       ),
