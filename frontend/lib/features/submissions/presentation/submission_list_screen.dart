@@ -56,14 +56,18 @@ class _SubmissionListScreenState extends ConsumerState<SubmissionListScreen> {
       final draft = await ref
           .read(submissionRepositoryProvider)
           .createEmptyDraft();
-      if (mounted) context.go('/submissions/${draft.id}');
+      if (!mounted) return;
+      setState(() => _creating = false);
+      context.push('/submissions/${draft.id}').then((_) {
+        if (mounted) _reload();
+      });
     } on ApiException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
-      if (mounted) setState(() => _creating = false);
+      if (mounted && _creating) setState(() => _creating = false);
     }
   }
 

@@ -59,7 +59,13 @@ class _SubmissionDetailScreenState
               return ListView(
                 children: [
                   TextButton.icon(
-                    onPressed: () => context.go('/submissions'),
+                    onPressed: () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/submissions');
+                      }
+                    },
                     icon: const Icon(Icons.arrow_back),
                     label: const Text('Kembali ke daftar'),
                   ),
