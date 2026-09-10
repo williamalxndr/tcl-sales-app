@@ -25,6 +25,8 @@ class _SubmissionEditorScreenState
   SubmissionPolicy? _policy;
   List<MasterOption> _locations = const [];
   List<MasterOption> _types = const [];
+  List<ReviewerOption> _acknowledgementOptions = const [];
+  List<PolicyPerson> _acknowledgers = const [];
   final Set<String> _locationIds = {};
   String? _typeId;
   DateTime? _start;
@@ -53,6 +55,10 @@ class _SubmissionEditorScreenState
         repo.policy(widget.submissionId),
         repo.locations(),
         repo.programTypes(),
+        repo.reviewerOptions(
+          widget.submissionId,
+          stage: ReviewerStage.acknowledgement,
+        ),
       ]);
       final draft = values[0] as Submission;
       if (!mounted) return;
@@ -61,6 +67,8 @@ class _SubmissionEditorScreenState
         _policy = values[1] as SubmissionPolicy;
         _locations = values[2] as List<MasterOption>;
         _types = values[3] as List<MasterOption>;
+        _acknowledgementOptions = (values[4] as ReviewerPage).items;
+        _acknowledgers = draft.reviewPlan.acknowledgers;
         _name.text = draft.programName ?? '';
         _cost.text = draft.estimatedCost ?? '';
         _locationIds.addAll(draft.locationIds);
@@ -117,6 +125,7 @@ class _SubmissionEditorScreenState
         'locationIds': _locationIds.toList(),
         'periodStart': _start == null ? null : _dateText(_start),
         'periodEnd': _end == null ? null : _dateText(_end),
+        'acknowledgerIds': _acknowledgers.map((person) => person.id).toList(),
         'programTypeId': _typeId,
         'estimatedCost': _cost.text.trim().isEmpty
             ? null
@@ -296,7 +305,21 @@ class _SubmissionEditorScreenState
                     _FormSection(
                       number: '03',
                       title: 'Rute pemeriksaan',
-                      child: _CheckerAssignment(policy: _policy),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _CheckerAssignment(policy: _policy),
+                          const SizedBox(height: 20),
+                          _AcknowledgementSelector(
+                            selected: _acknowledgers,
+                            options: _acknowledgementOptions,
+                            min: _policy?.minAcknowledgers ?? 1,
+                            max: _policy?.maxAcknowledgers ?? 2,
+                            onChanged: (people) =>
+                                setState(() => _acknowledgers = people),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 20),
                     FilledButton(
@@ -312,6 +335,212 @@ class _SubmissionEditorScreenState
       ),
     );
   }
+}
+
+class _AcknowledgementSelector extends StatelessWidget {
+  const _AcknowledgementSelector({
+    required this.selected,
+    required this.options,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+  final List<PolicyPerson> selected;
+  final List<ReviewerOption> options;
+  final int min;
+  final int max;
+  final ValueChanged<List<PolicyPerson>> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _InputLabel('Reviewer Mengetahui · pilih $min–$max orang'),
+      const Text(
+        'Urutan pada daftar ini menjadi urutan pemeriksaan.',
+        style: TextStyle(fontSize: 12, color: AppColors.muted),
+      ),
+      const SizedBox(height: 10),
+      if (selected.isEmpty)
+        const _EmptyReviewerSelection()
+      else
+        ...selected.indexed.map(
+          (entry) => _SelectedReviewerRow(
+            position: entry.$1,
+            person: entry.$2,
+            total: selected.length,
+            onMove: (offset) => _move(entry.$1, offset),
+            onRemove: () => onChanged([...selected]..removeAt(entry.$1)),
+          ),
+        ),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        onPressed: selected.length >= max ? null : () => _choose(context),
+        icon: const Icon(Icons.person_add_alt_1_outlined, size: 17),
+        label: const Text('Tambah reviewer'),
+      ),
+    ],
+  );
+
+  void _move(int from, int offset) {
+    final to = from + offset;
+    if (to < 0 || to >= selected.length) return;
+    final reordered = [...selected];
+    final person = reordered.removeAt(from);
+    reordered.insert(to, person);
+    onChanged(reordered);
+  }
+
+  Future<void> _choose(BuildContext context) async {
+    final selectedIds = selected.map((person) => person.id).toSet();
+    final person = await showDialog<PolicyPerson>(
+      context: context,
+      builder: (_) => _ReviewerChoiceDialog(
+        options: options
+            .where((option) => !selectedIds.contains(option.person.id))
+            .toList(),
+      ),
+    );
+    if (person != null) onChanged([...selected, person]);
+  }
+}
+
+class _EmptyReviewerSelection extends StatelessWidget {
+  const _EmptyReviewerSelection();
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF9FBFC),
+      border: Border.all(color: AppColors.line),
+      borderRadius: BorderRadius.circular(7),
+    ),
+    child: const Text(
+      'Belum ada reviewer dipilih.',
+      style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+    ),
+  );
+}
+
+class _SelectedReviewerRow extends StatelessWidget {
+  const _SelectedReviewerRow({
+    required this.position,
+    required this.person,
+    required this.total,
+    required this.onMove,
+    required this.onRemove,
+  });
+  final int position;
+  final PolicyPerson person;
+  final int total;
+  final ValueChanged<int> onMove;
+  final VoidCallback onRemove;
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 7),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    decoration: BoxDecoration(
+      border: Border.all(color: AppColors.line),
+      borderRadius: BorderRadius.circular(7),
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: AppColors.softNavy,
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            '${position + 1}',
+            style: const TextStyle(
+              fontSize: 10.5,
+              color: AppColors.navy,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                person.fullName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              if (person.jobTitle != null)
+                Text(
+                  person.jobTitle!,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.muted,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Naikkan urutan',
+          onPressed: position > 0 ? () => onMove(-1) : null,
+          icon: const Icon(Icons.keyboard_arrow_up, size: 19),
+        ),
+        IconButton(
+          tooltip: 'Turunkan urutan',
+          onPressed: position < total - 1 ? () => onMove(1) : null,
+          icon: const Icon(Icons.keyboard_arrow_down, size: 19),
+        ),
+        IconButton(
+          tooltip: 'Hapus reviewer',
+          onPressed: onRemove,
+          color: const Color(0xFF9C4030),
+          icon: const Icon(Icons.close, size: 18),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ReviewerChoiceDialog extends StatelessWidget {
+  const _ReviewerChoiceDialog({required this.options});
+  final List<ReviewerOption> options;
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Pilih reviewer Mengetahui'),
+    content: SizedBox(
+      width: 420,
+      child: options.isEmpty
+          ? const Text('Tidak ada reviewer eligible yang tersedia.')
+          : ListView.separated(
+              shrinkWrap: true,
+              itemCount: options.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final person = options[index].person;
+                return ListTile(
+                  onTap: () => Navigator.pop(context, person),
+                  title: Text(person.fullName),
+                  subtitle: person.jobTitle == null
+                      ? null
+                      : Text(person.jobTitle!),
+                  trailing: const Icon(
+                    Icons.add_circle_outline,
+                    size: 19,
+                    color: AppColors.navy,
+                  ),
+                );
+              },
+            ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Batal'),
+      ),
+    ],
+  );
 }
 
 class _CheckerAssignment extends StatelessWidget {

@@ -72,6 +72,7 @@ class Submission extends SubmissionSummary {
     required super.version,
     required this.allowedActions,
     required this.issues,
+    required this.reviewPlan,
     super.programName,
     super.programType,
     super.programTypeId,
@@ -82,6 +83,7 @@ class Submission extends SubmissionSummary {
 
   final List<String> allowedActions;
   final List<SubmissionIssue> issues;
+  final ReviewPlan reviewPlan;
 
   factory Submission.fromJson(Map<String, dynamic> json) {
     final summary = SubmissionSummary.fromJson(json);
@@ -108,6 +110,42 @@ class Submission extends SubmissionSummary {
                 SubmissionIssue.fromJson(Map<String, dynamic>.from(value)),
           )
           .toList(growable: false),
+      reviewPlan: ReviewPlan.fromJson(
+        json['reviewPlan'] is Map
+            ? Map<String, dynamic>.from(json['reviewPlan'] as Map)
+            : const {},
+      ),
+    );
+  }
+}
+
+class ReviewPlan {
+  const ReviewPlan({
+    required this.acknowledgers,
+    required this.approvers,
+    this.checker,
+  });
+
+  final PolicyPerson? checker;
+  final List<PolicyPerson> acknowledgers;
+  final List<PolicyPerson> approvers;
+
+  factory ReviewPlan.fromJson(Map<String, dynamic> json) {
+    List<PolicyPerson> people(String key) =>
+        (json[key] as List<dynamic>? ?? const [])
+            .whereType<Map>()
+            .map(
+              (person) =>
+                  PolicyPerson.fromJson(Map<String, dynamic>.from(person)),
+            )
+            .toList(growable: false);
+    final checker = json['checker'];
+    return ReviewPlan(
+      checker: checker is Map
+          ? PolicyPerson.fromJson(Map<String, dynamic>.from(checker))
+          : null,
+      acknowledgers: people('acknowledgers'),
+      approvers: people('approvers'),
     );
   }
 }

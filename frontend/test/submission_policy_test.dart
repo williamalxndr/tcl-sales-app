@@ -35,4 +35,20 @@ void main() {
 
     expect(issue.fieldLabel, 'Estimasi biaya');
   });
+
+  test('keeps reviewer order from the server review plan', () {
+    final plan = ReviewPlan.fromJson({
+      'checker': null,
+      'acknowledgers': [
+        {'id': 'usr_dewi', 'fullName': 'Dewi Larasati'},
+        {'id': 'usr_rahmat', 'fullName': 'Rahmat Hidayat'},
+      ],
+      'approvers': [],
+    });
+
+    expect(plan.acknowledgers.map((person) => person.id), [
+      'usr_dewi',
+      'usr_rahmat',
+    ]);
+  });
 }
