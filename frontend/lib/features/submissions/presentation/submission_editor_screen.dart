@@ -22,6 +22,7 @@ class _SubmissionEditorScreenState
   final _name = TextEditingController();
   final _cost = TextEditingController();
   Submission? _draft;
+  SubmissionPolicy? _policy;
   List<MasterOption> _locations = const [];
   List<MasterOption> _types = const [];
   final Set<String> _locationIds = {};
@@ -49,6 +50,7 @@ class _SubmissionEditorScreenState
       final repo = ref.read(submissionRepositoryProvider);
       final values = await Future.wait([
         repo.get(widget.submissionId),
+        repo.policy(widget.submissionId),
         repo.locations(),
         repo.programTypes(),
       ]);
@@ -56,8 +58,9 @@ class _SubmissionEditorScreenState
       if (!mounted) return;
       setState(() {
         _draft = draft;
-        _locations = values[1] as List<MasterOption>;
-        _types = values[2] as List<MasterOption>;
+        _policy = values[1] as SubmissionPolicy;
+        _locations = values[2] as List<MasterOption>;
+        _types = values[3] as List<MasterOption>;
         _name.text = draft.programName ?? '';
         _cost.text = draft.estimatedCost ?? '';
         _locationIds.addAll(draft.locationIds);
@@ -290,6 +293,12 @@ class _SubmissionEditorScreenState
                       ),
                     ),
                     const SizedBox(height: 20),
+                    _FormSection(
+                      number: '03',
+                      title: 'Rute pemeriksaan',
+                      child: _CheckerAssignment(policy: _policy),
+                    ),
+                    const SizedBox(height: 20),
                     FilledButton(
                       onPressed: _saving ? null : _save,
                       child: Text(_saving ? 'Menyimpan…' : 'Simpan Draft'),
@@ -303,6 +312,98 @@ class _SubmissionEditorScreenState
       ),
     );
   }
+}
+
+class _CheckerAssignment extends StatelessWidget {
+  const _CheckerAssignment({required this.policy});
+  final SubmissionPolicy? policy;
+
+  @override
+  Widget build(BuildContext context) {
+    final checker = policy?.checker;
+    final configured = policy?.routingConfigured == true && checker != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _InputLabel('Checker'),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: configured ? AppColors.softNavy : const Color(0xFFFFF1F0),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(
+              color: configured
+                  ? const Color(0xFFD7E3E9)
+                  : const Color(0xFFF1C4C0),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: configured
+                      ? Colors.white
+                      : const Color(0xFFFFE2DF),
+                  foregroundColor: configured
+                      ? AppColors.navy
+                      : const Color(0xFF9C4030),
+                  child: Text(
+                    configured ? _initials(checker.fullName) : '!',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        configured
+                            ? checker.fullName
+                            : 'Checker belum dikonfigurasi',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        configured
+                            ? checker.jobTitle ?? 'Checker'
+                            : 'Hubungi administrator untuk menetapkan Checker.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.lock_outline,
+                  size: 17,
+                  color: AppColors.faint,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Checker ditetapkan dari relasi karyawan dan tidak dapat diubah dari pengajuan.',
+          style: TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+      ],
+    );
+  }
+
+  String _initials(String name) => name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .take(2)
+      .map((part) => part[0].toUpperCase())
+      .join();
 }
 
 class _FormSection extends StatelessWidget {
