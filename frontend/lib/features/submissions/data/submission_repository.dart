@@ -47,6 +47,12 @@ class SubmissionRepository {
     );
   }
 
+  Future<SubmissionPolicy> policy(String submissionId) async {
+    return SubmissionPolicy.fromJson(
+      await _api.getObject('program-submissions/$submissionId/policy'),
+    );
+  }
+
   Future<List<MasterOption>> locations() =>
       _masterOptions('master-data/locations');
 

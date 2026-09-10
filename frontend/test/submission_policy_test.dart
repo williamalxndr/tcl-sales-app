@@ -1,0 +1,28 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sales_app/features/submissions/domain/submission.dart';
+
+void main() {
+  test('parses the server-resolved draft policy', () {
+    final policy = SubmissionPolicy.fromJson({
+      'policyVersion': 'policy_example_1',
+      'checker': {
+        'id': 'usr_andi',
+        'fullName': 'Andi Setiawan',
+        'jobTitle': 'Supervisor Sales',
+      },
+      'minAcknowledgers': 1,
+      'maxAcknowledgers': 2,
+      'minApprovers': 1,
+      'maxApprovers': 3,
+      'allowedAttachmentExtensions': ['.pdf', '.xlsx'],
+      'maxAttachmentBytes': 10000000,
+      'routingConfigured': true,
+    });
+
+    expect(policy.checker?.fullName, 'Andi Setiawan');
+    expect(policy.minAcknowledgers, 1);
+    expect(policy.maxApprovers, 3);
+    expect(policy.allowedAttachmentExtensions, ['.pdf', '.xlsx']);
+    expect(policy.routingConfigured, isTrue);
+  });
+}

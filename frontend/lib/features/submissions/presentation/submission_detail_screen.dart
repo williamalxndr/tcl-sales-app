@@ -18,15 +18,21 @@ class SubmissionDetailScreen extends ConsumerStatefulWidget {
 
 class _SubmissionDetailScreenState
     extends ConsumerState<SubmissionDetailScreen> {
-  late Future<Submission> _future;
+  late Future<_SubmissionDetailData> _future;
   @override
   void initState() {
     super.initState();
     _future = _load();
   }
 
-  Future<Submission> _load() =>
-      ref.read(submissionRepositoryProvider).get(widget.submissionId);
+  Future<_SubmissionDetailData> _load() async {
+    final repository = ref.read(submissionRepositoryProvider);
+    final submission = await repository.get(widget.submissionId);
+    final policy = submission.status == 'draft'
+        ? await repository.policy(widget.submissionId)
+        : null;
+    return _SubmissionDetailData(submission: submission, policy: policy);
+  }
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -35,7 +41,7 @@ class _SubmissionDetailScreenState
         constraints: const BoxConstraints(maxWidth: 900),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 60),
-          child: FutureBuilder<Submission>(
+          child: FutureBuilder<_SubmissionDetailData>(
             future: _future,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
@@ -56,7 +62,8 @@ class _SubmissionDetailScreenState
                   ),
                 );
               }
-              final item = snapshot.requireData;
+              final result = snapshot.requireData;
+              final item = result.submission;
               return ListView(
                 children: [
                   TextButton.icon(
@@ -86,6 +93,10 @@ class _SubmissionDetailScreenState
                     ],
                   ),
                   const SizedBox(height: 16),
+                  if (result.policy != null) ...[
+                    _PolicySummary(policy: result.policy!),
+                    const SizedBox(height: 16),
+                  ],
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -255,6 +266,101 @@ class _SubmissionDetailScreenState
           ),
         ),
       ),
+    ),
+  );
+}
+
+class _SubmissionDetailData {
+  const _SubmissionDetailData({required this.submission, this.policy});
+  final Submission submission;
+  final SubmissionPolicy? policy;
+}
+
+class _PolicySummary extends StatelessWidget {
+  const _PolicySummary({required this.policy});
+  final SubmissionPolicy policy;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'RUTE PEMERIKSAAN',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: .6,
+              color: AppColors.faint,
+            ),
+          ),
+          const SizedBox(height: 11),
+          _PolicyRow(
+            label: 'Checker',
+            value: policy.routingConfigured && policy.checker != null
+                ? '${policy.checker!.fullName}${policy.checker!.jobTitle == null ? '' : ' · ${policy.checker!.jobTitle}'}'
+                : 'Belum dikonfigurasi',
+            alert: !policy.routingConfigured || policy.checker == null,
+          ),
+          _PolicyRow(
+            label: 'Mengetahui',
+            value:
+                '${policy.minAcknowledgers}–${policy.maxAcknowledgers} orang',
+          ),
+          _PolicyRow(
+            label: 'Persetujuan',
+            value: '${policy.minApprovers}–${policy.maxApprovers} orang',
+          ),
+          _PolicyRow(
+            label: 'Lampiran',
+            value:
+                '${policy.allowedAttachmentExtensions.join(', ')} · ${_megabytes(policy.maxAttachmentBytes)} MB maks.',
+          ),
+        ],
+      ),
+    ),
+  );
+
+  String _megabytes(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(
+    bytes % (1024 * 1024) == 0 ? 0 : 1,
+  );
+}
+
+class _PolicyRow extends StatelessWidget {
+  const _PolicyRow({
+    required this.label,
+    required this.value,
+    this.alert = false,
+  });
+  final String label;
+  final String value;
+  final bool alert;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 5),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 112,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: alert ? const Color(0xFF9C4030) : AppColors.ink,
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }

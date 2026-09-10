@@ -131,6 +131,64 @@ class SubmissionIssue {
       );
 }
 
+class SubmissionPolicy {
+  const SubmissionPolicy({
+    required this.policyVersion,
+    required this.minAcknowledgers,
+    required this.maxAcknowledgers,
+    required this.minApprovers,
+    required this.maxApprovers,
+    required this.allowedAttachmentExtensions,
+    required this.maxAttachmentBytes,
+    required this.routingConfigured,
+    this.checker,
+  });
+
+  final String policyVersion;
+  final PolicyPerson? checker;
+  final int minAcknowledgers;
+  final int maxAcknowledgers;
+  final int minApprovers;
+  final int maxApprovers;
+  final List<String> allowedAttachmentExtensions;
+  final int maxAttachmentBytes;
+  final bool routingConfigured;
+
+  factory SubmissionPolicy.fromJson(Map<String, dynamic> json) {
+    final checker = json['checker'];
+    return SubmissionPolicy(
+      policyVersion: json['policyVersion'] as String? ?? '',
+      checker: checker is Map
+          ? PolicyPerson.fromJson(Map<String, dynamic>.from(checker))
+          : null,
+      minAcknowledgers: json['minAcknowledgers'] as int? ?? 0,
+      maxAcknowledgers: json['maxAcknowledgers'] as int? ?? 0,
+      minApprovers: json['minApprovers'] as int? ?? 0,
+      maxApprovers: json['maxApprovers'] as int? ?? 0,
+      allowedAttachmentExtensions:
+          (json['allowedAttachmentExtensions'] as List<dynamic>? ?? const [])
+              .whereType<String>()
+              .toList(growable: false),
+      maxAttachmentBytes: json['maxAttachmentBytes'] as int? ?? 0,
+      routingConfigured: json['routingConfigured'] as bool? ?? false,
+    );
+  }
+}
+
+class PolicyPerson {
+  const PolicyPerson({required this.id, required this.fullName, this.jobTitle});
+
+  final String id;
+  final String fullName;
+  final String? jobTitle;
+
+  factory PolicyPerson.fromJson(Map<String, dynamic> json) => PolicyPerson(
+    id: json['id'] as String? ?? '',
+    fullName: json['fullName'] as String? ?? '',
+    jobTitle: json['jobTitle'] as String?,
+  );
+}
+
 class SubmissionPage {
   const SubmissionPage({
     required this.items,
