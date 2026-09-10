@@ -26,7 +26,9 @@ class _SubmissionEditorScreenState
   List<MasterOption> _locations = const [];
   List<MasterOption> _types = const [];
   List<ReviewerOption> _acknowledgementOptions = const [];
+  List<ReviewerOption> _approvalOptions = const [];
   List<PolicyPerson> _acknowledgers = const [];
+  List<PolicyPerson> _approvers = const [];
   final Set<String> _locationIds = {};
   String? _typeId;
   DateTime? _start;
@@ -59,6 +61,10 @@ class _SubmissionEditorScreenState
           widget.submissionId,
           stage: ReviewerStage.acknowledgement,
         ),
+        repo.reviewerOptions(
+          widget.submissionId,
+          stage: ReviewerStage.approval,
+        ),
       ]);
       final draft = values[0] as Submission;
       if (!mounted) return;
@@ -68,7 +74,9 @@ class _SubmissionEditorScreenState
         _locations = values[2] as List<MasterOption>;
         _types = values[3] as List<MasterOption>;
         _acknowledgementOptions = (values[4] as ReviewerPage).items;
+        _approvalOptions = (values[5] as ReviewerPage).items;
         _acknowledgers = draft.reviewPlan.acknowledgers;
+        _approvers = draft.reviewPlan.approvers;
         _name.text = draft.programName ?? '';
         _cost.text = draft.estimatedCost ?? '';
         _locationIds.addAll(draft.locationIds);
@@ -126,6 +134,7 @@ class _SubmissionEditorScreenState
         'periodStart': _start == null ? null : _dateText(_start),
         'periodEnd': _end == null ? null : _dateText(_end),
         'acknowledgerIds': _acknowledgers.map((person) => person.id).toList(),
+        'approverIds': _approvers.map((person) => person.id).toList(),
         'programTypeId': _typeId,
         'estimatedCost': _cost.text.trim().isEmpty
             ? null
@@ -310,13 +319,24 @@ class _SubmissionEditorScreenState
                         children: [
                           _CheckerAssignment(policy: _policy),
                           const SizedBox(height: 20),
-                          _AcknowledgementSelector(
+                          _ReviewerSelector(
+                            stageLabel: 'Reviewer Mengetahui',
                             selected: _acknowledgers,
                             options: _acknowledgementOptions,
                             min: _policy?.minAcknowledgers ?? 1,
                             max: _policy?.maxAcknowledgers ?? 2,
                             onChanged: (people) =>
                                 setState(() => _acknowledgers = people),
+                          ),
+                          const SizedBox(height: 20),
+                          _ReviewerSelector(
+                            stageLabel: 'Reviewer Persetujuan',
+                            selected: _approvers,
+                            options: _approvalOptions,
+                            min: _policy?.minApprovers ?? 1,
+                            max: _policy?.maxApprovers ?? 3,
+                            onChanged: (people) =>
+                                setState(() => _approvers = people),
                           ),
                         ],
                       ),
@@ -337,14 +357,16 @@ class _SubmissionEditorScreenState
   }
 }
 
-class _AcknowledgementSelector extends StatelessWidget {
-  const _AcknowledgementSelector({
+class _ReviewerSelector extends StatelessWidget {
+  const _ReviewerSelector({
+    required this.stageLabel,
     required this.selected,
     required this.options,
     required this.min,
     required this.max,
     required this.onChanged,
   });
+  final String stageLabel;
   final List<PolicyPerson> selected;
   final List<ReviewerOption> options;
   final int min;
@@ -355,7 +377,7 @@ class _AcknowledgementSelector extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _InputLabel('Reviewer Mengetahui · pilih $min–$max orang'),
+      _InputLabel('$stageLabel · pilih $min–$max orang'),
       const Text(
         'Urutan pada daftar ini menjadi urutan pemeriksaan.',
         style: TextStyle(fontSize: 12, color: AppColors.muted),
@@ -377,7 +399,7 @@ class _AcknowledgementSelector extends StatelessWidget {
       OutlinedButton.icon(
         onPressed: selected.length >= max ? null : () => _choose(context),
         icon: const Icon(Icons.person_add_alt_1_outlined, size: 17),
-        label: const Text('Tambah reviewer'),
+        label: Text('Tambah $stageLabel'),
       ),
     ],
   );
@@ -396,6 +418,7 @@ class _AcknowledgementSelector extends StatelessWidget {
     final person = await showDialog<PolicyPerson>(
       context: context,
       builder: (_) => _ReviewerChoiceDialog(
+        stageLabel: stageLabel,
         options: options
             .where((option) => !selectedIds.contains(option.person.id))
             .toList(),
@@ -504,11 +527,15 @@ class _SelectedReviewerRow extends StatelessWidget {
 }
 
 class _ReviewerChoiceDialog extends StatelessWidget {
-  const _ReviewerChoiceDialog({required this.options});
+  const _ReviewerChoiceDialog({
+    required this.stageLabel,
+    required this.options,
+  });
+  final String stageLabel;
   final List<ReviewerOption> options;
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Pilih reviewer Mengetahui'),
+    title: Text('Pilih $stageLabel'),
     content: SizedBox(
       width: 420,
       child: options.isEmpty

@@ -43,12 +43,15 @@ void main() {
         {'id': 'usr_dewi', 'fullName': 'Dewi Larasati'},
         {'id': 'usr_rahmat', 'fullName': 'Rahmat Hidayat'},
       ],
-      'approvers': [],
+      'approvers': [
+        {'id': 'usr_ratna', 'fullName': 'Ratna Kusuma'},
+      ],
     });
 
     expect(plan.acknowledgers.map((person) => person.id), [
       'usr_dewi',
       'usr_rahmat',
     ]);
+    expect(plan.approvers.single.id, 'usr_ratna');
   });
 }
