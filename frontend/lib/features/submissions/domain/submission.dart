@@ -211,6 +211,26 @@ class AttachmentUploadResult {
   }
 }
 
+class AttachmentRemovalResult {
+  const AttachmentRemovalResult({
+    required this.attachmentId,
+    required this.submissionVersion,
+  });
+
+  final String attachmentId;
+  final int submissionVersion;
+
+  factory AttachmentRemovalResult.fromJson(Map<String, dynamic> json) {
+    if (json['attachmentId'] is! String || json['removed'] != true) {
+      throw const FormatException('Attachment removal was not confirmed.');
+    }
+    return AttachmentRemovalResult(
+      attachmentId: json['attachmentId'] as String,
+      submissionVersion: json['submissionVersion'] as int? ?? 0,
+    );
+  }
+}
+
 class ReviewPlan {
   const ReviewPlan({
     required this.acknowledgers,

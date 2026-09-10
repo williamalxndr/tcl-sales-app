@@ -39,6 +39,7 @@ class _SubmissionEditorScreenState
   bool _saving = false;
   bool _savingReviewPlan = false;
   bool _uploading = false;
+  String? _removingAttachmentId;
 
   @override
   void initState() {
@@ -257,6 +258,66 @@ class _SubmissionEditorScreenState
       if (mounted) setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _removeAttachment(SubmissionAttachment attachment) async {
+    final draft = _draft;
+    if (draft == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus lampiran?'),
+        content: Text(
+          '“${attachment.fileName}” akan dihapus dari draft. Aksi ini tidak dapat dibatalkan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF9C4030),
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _removingAttachmentId = attachment.id;
+      _error = null;
+    });
+    try {
+      final result = await ref
+          .read(submissionRepositoryProvider)
+          .removeAttachment(
+            widget.submissionId,
+            attachmentId: attachment.id,
+            version: draft.version,
+          );
+      if (!mounted) return;
+      setState(() {
+        _draft = draft.copyWith(
+          version: result.submissionVersion > 0
+              ? result.submissionVersion
+              : draft.version,
+          attachments: draft.attachments
+              .where((item) => item.id != result.attachmentId)
+              .toList(growable: false),
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lampiran dihapus dari draft.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _removingAttachmentId = null);
     }
   }
 
@@ -487,6 +548,14 @@ class _SubmissionEditorScreenState
                         children: [
                           SubmissionAttachmentList(
                             attachments: _draft!.attachments,
+                            onRemove:
+                                _draft!.allowedActions.contains(
+                                      'removeAttachment',
+                                    ) &&
+                                    !_uploading
+                                ? _removeAttachment
+                                : null,
+                            removingAttachmentId: _removingAttachmentId,
                           ),
                           const SizedBox(height: 12),
                           OutlinedButton.icon(

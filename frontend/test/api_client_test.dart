@@ -141,6 +141,43 @@ void main() {
     expect(response.meta['requestId'], 'req_upload');
   });
 
+  test('sends attachment removal with concurrency headers', () async {
+    final api = ApiClient(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        expect(request.method, 'DELETE');
+        expect(
+          request.url.path,
+          '/api/v1/program-submissions/sub_0144/attachments/att_001',
+        );
+        expect(request.headers['if-match'], '"3"');
+        expect(request.headers['idempotency-key'], 'remove-attachment-key-001');
+        expect(request.body, isEmpty);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'attachmentId': 'att_001',
+              'removed': true,
+              'submissionVersion': 4,
+            },
+            'meta': {'requestId': 'req_remove'},
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(api.close);
+
+    final response = await api.deleteObject(
+      'program-submissions/sub_0144/attachments/att_001',
+      idempotencyKey: 'remove-attachment-key-001',
+      ifMatch: '"3"',
+    );
+
+    expect(response['removed'], isTrue);
+    expect(response['submissionVersion'], 4);
+  });
+
   test('HTML error pages become a safe client error', () async {
     final api = ApiClient(
       baseUrl: baseUrl,

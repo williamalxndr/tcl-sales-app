@@ -146,6 +146,19 @@ class SubmissionRepository {
     );
   }
 
+  Future<AttachmentRemovalResult> removeAttachment(
+    String submissionId, {
+    required String attachmentId,
+    required int version,
+  }) async {
+    final data = await _api.deleteObject(
+      'program-submissions/$submissionId/attachments/$attachmentId',
+      idempotencyKey: _newIdempotencyKey('remove-attachment'),
+      ifMatch: '"$version"',
+    );
+    return AttachmentRemovalResult.fromJson(data);
+  }
+
   String _newIdempotencyKey([String prefix = 'draft']) {
     final random = Random.secure();
     final parts = List<String>.generate(
