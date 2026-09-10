@@ -87,6 +87,29 @@ class Submission extends SubmissionSummary {
   final ReviewPlan reviewPlan;
   final List<SubmissionAttachment> attachments;
 
+  Submission copyWith({
+    int? version,
+    List<SubmissionAttachment>? attachments,
+    ReviewPlan? reviewPlan,
+  }) => Submission(
+    id: id,
+    programNumber: programNumber,
+    status: status,
+    locations: locations,
+    locationIds: locationIds,
+    version: version ?? this.version,
+    allowedActions: allowedActions,
+    issues: issues,
+    reviewPlan: reviewPlan ?? this.reviewPlan,
+    attachments: attachments ?? this.attachments,
+    programName: programName,
+    programType: programType,
+    programTypeId: programTypeId,
+    periodStart: periodStart,
+    periodEnd: periodEnd,
+    estimatedCost: estimatedCost,
+  );
+
   factory Submission.fromJson(Map<String, dynamic> json) {
     final summary = SubmissionSummary.fromJson(json);
     return Submission(
@@ -162,6 +185,29 @@ class SubmissionAttachment {
   String get extension {
     final dot = fileName.lastIndexOf('.');
     return dot < 0 ? 'FILE' : fileName.substring(dot + 1).toUpperCase();
+  }
+}
+
+class AttachmentUploadResult {
+  const AttachmentUploadResult({
+    required this.attachment,
+    required this.submissionVersion,
+  });
+
+  final SubmissionAttachment attachment;
+  final int submissionVersion;
+
+  factory AttachmentUploadResult.fromJson(Map<String, dynamic> json) {
+    final attachment = json['attachment'];
+    if (attachment is! Map) {
+      throw const FormatException('Upload response is missing its attachment.');
+    }
+    return AttachmentUploadResult(
+      attachment: SubmissionAttachment.fromJson(
+        Map<String, dynamic>.from(attachment),
+      ),
+      submissionVersion: json['submissionVersion'] as int? ?? 0,
+    );
   }
 }
 

@@ -97,6 +97,50 @@ void main() {
     },
   );
 
+  test('sends a multipart attachment with concurrency headers', () async {
+    final api = ApiClient(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(
+          request.url.path,
+          '/api/v1/program-submissions/sub_0144/attachments',
+        );
+        expect(request.headers['if-match'], '"2"');
+        expect(request.headers['idempotency-key'], 'attachment-key-001');
+        expect(
+          request.headers['content-type'],
+          contains('multipart/form-data'),
+        );
+        expect(
+          utf8.decode(request.bodyBytes),
+          contains('Proposal Program.pdf'),
+        );
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'attachment': {'id': 'att_001'},
+              'submissionVersion': 3,
+            },
+            'meta': {'requestId': 'req_upload'},
+          }),
+          202,
+        );
+      }),
+    );
+    addTearDown(api.close);
+
+    final response = await api.postMultipart(
+      'program-submissions/sub_0144/attachments',
+      bytes: [37, 80, 68, 70],
+      fileName: 'Proposal Program.pdf',
+      idempotencyKey: 'attachment-key-001',
+      ifMatch: '"2"',
+    );
+
+    expect(response.meta['requestId'], 'req_upload');
+  });
+
   test('HTML error pages become a safe client error', () async {
     final api = ApiClient(
       baseUrl: baseUrl,

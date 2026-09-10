@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/providers.dart';
@@ -37,6 +38,7 @@ class _SubmissionEditorScreenState
   Object? _error;
   bool _saving = false;
   bool _savingReviewPlan = false;
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -184,6 +186,83 @@ class _SubmissionEditorScreenState
       if (mounted) setState(() => _savingReviewPlan = false);
     }
   }
+
+  Future<void> _pickAndUploadAttachment() async {
+    final draft = _draft;
+    if (draft == null) return;
+    final extensions =
+        _policy?.allowedAttachmentExtensions
+            .map((extension) => extension.replaceFirst('.', ''))
+            .toList(growable: false) ??
+        const <String>[];
+    final picked = await FilePicker.platform.pickFiles(
+      type: extensions.isEmpty ? FileType.any : FileType.custom,
+      allowedExtensions: extensions.isEmpty ? null : extensions,
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File tidak dapat dibaca. Coba pilih ulang.'),
+          ),
+        );
+      }
+      return;
+    }
+    final maximum = _policy?.maxAttachmentBytes;
+    if (maximum != null && bytes.length > maximum) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Ukuran file melebihi batas ${_megabytes(maximum)} MB.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    setState(() {
+      _uploading = true;
+      _error = null;
+    });
+    try {
+      final result = await ref
+          .read(submissionRepositoryProvider)
+          .uploadAttachment(
+            widget.submissionId,
+            bytes: bytes,
+            fileName: file.name,
+            version: draft.version,
+          );
+      if (!mounted) return;
+      setState(() {
+        _draft = draft.copyWith(
+          version: result.submissionVersion > 0
+              ? result.submissionVersion
+              : draft.version,
+          attachments: [...draft.attachments, result.attachment],
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lampiran diunggah dan menunggu pemindaian.'),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  String _megabytes(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(
+    bytes % (1024 * 1024) == 0 ? 0 : 1,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -403,8 +482,38 @@ class _SubmissionEditorScreenState
                     _FormSection(
                       number: '04',
                       title: 'Lampiran',
-                      child: SubmissionAttachmentList(
-                        attachments: _draft!.attachments,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SubmissionAttachmentList(
+                            attachments: _draft!.attachments,
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed:
+                                _uploading ||
+                                    !_draft!.allowedActions.contains(
+                                      'uploadAttachment',
+                                    )
+                                ? null
+                                : _pickAndUploadAttachment,
+                            icon: _uploading
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.upload_file_outlined,
+                                    size: 17,
+                                  ),
+                            label: Text(
+                              _uploading ? 'Mengunggah…' : 'Unggah lampiran',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 20),

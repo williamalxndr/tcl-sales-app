@@ -170,6 +170,25 @@ class ApiClient {
     );
   }
 
+  Future<ApiResponse<dynamic>> postMultipart(
+    String path, {
+    required List<int> bytes,
+    required String fileName,
+    String fieldName = 'file',
+    String? idempotencyKey,
+    String? ifMatch,
+  }) {
+    return _multipartRequest(
+      path,
+      bytes: bytes,
+      fileName: fileName,
+      fieldName: fieldName,
+      idempotencyKey: idempotencyKey,
+      ifMatch: ifMatch,
+      hasRetried: false,
+    );
+  }
+
   Future<ApiResponse<dynamic>> _request(
     String method,
     String path, {
@@ -223,6 +242,70 @@ class ApiClient {
           ifMatch: ifMatch,
           authenticated: authenticated,
           retryUnauthorized: retryUnauthorized,
+          hasRetried: true,
+        );
+      }
+      throw _apiError(response, decoded.requestId);
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        code: 'TIMEOUT',
+        message: 'Layanan membutuhkan waktu terlalu lama untuk merespons.',
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        code: 'NETWORK_ERROR',
+        message: 'Tidak dapat terhubung ke layanan.',
+      );
+    } on FormatException {
+      throw const ApiException(
+        code: 'INVALID_RESPONSE',
+        message: 'Layanan mengirim respons yang tidak dapat diproses.',
+      );
+    }
+  }
+
+  Future<ApiResponse<dynamic>> _multipartRequest(
+    String path, {
+    required List<int> bytes,
+    required String fileName,
+    required String fieldName,
+    required String? idempotencyKey,
+    required String? ifMatch,
+    required bool hasRetried,
+  }) async {
+    final requestHeaders = <String, String>{
+      'Accept': 'application/json',
+      if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+      ...?(_csrfToken == null ? null : {'X-CSRFToken': _csrfToken!}),
+      ...?(idempotencyKey == null ? null : {'Idempotency-Key': idempotencyKey}),
+      ...?(ifMatch == null ? null : {'If-Match': ifMatch}),
+    };
+    try {
+      final request = http.MultipartRequest('POST', _uriFor(path, const {}))
+        ..headers.addAll(requestHeaders)
+        ..files.add(
+          http.MultipartFile.fromBytes(fieldName, bytes, filename: fileName),
+        );
+      final streamed = await _client.send(request).timeout(timeout);
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(timeout);
+      final decoded = _decodeEnvelope(response);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return decoded;
+      }
+      if (response.statusCode == 401 &&
+          !hasRetried &&
+          await _refreshSession()) {
+        return _multipartRequest(
+          path,
+          bytes: bytes,
+          fileName: fileName,
+          fieldName: fieldName,
+          idempotencyKey: idempotencyKey,
+          ifMatch: ifMatch,
           hasRetried: true,
         );
       }

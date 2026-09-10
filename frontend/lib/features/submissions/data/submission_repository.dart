@@ -125,12 +125,33 @@ class SubmissionRepository {
     return Submission.fromJson(response.data as Map<String, dynamic>);
   }
 
-  String _newIdempotencyKey() {
+  Future<AttachmentUploadResult> uploadAttachment(
+    String submissionId, {
+    required List<int> bytes,
+    required String fileName,
+    required int version,
+  }) async {
+    final response = await _api.postMultipart(
+      'program-submissions/$submissionId/attachments',
+      bytes: bytes,
+      fileName: fileName,
+      idempotencyKey: _newIdempotencyKey('attachment'),
+      ifMatch: '"$version"',
+    );
+    if (response.data is! Map) {
+      throw const FormatException('Invalid attachment upload response.');
+    }
+    return AttachmentUploadResult.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
+  }
+
+  String _newIdempotencyKey([String prefix = 'draft']) {
     final random = Random.secure();
     final parts = List<String>.generate(
       24,
       (_) => random.nextInt(36).toRadixString(36),
     );
-    return 'draft-${parts.join()}';
+    return '$prefix-${parts.join()}';
   }
 }

@@ -69,4 +69,22 @@ void main() {
     expect(attachment.extension, 'PDF');
     expect(attachment.scanStatus, 'clean');
   });
+
+  test('parses an attachment upload result and its new submission version', () {
+    final result = AttachmentUploadResult.fromJson({
+      'attachment': {
+        'id': 'att_proposal',
+        'submissionId': 'sub_0144',
+        'fileName': 'Proposal Program.pdf',
+        'contentType': 'application/pdf',
+        'sizeBytes': 1800000,
+        'scanStatus': 'pending',
+        'uploadedAt': '2026-08-21T03:06:00Z',
+      },
+      'submissionVersion': 3,
+    });
+
+    expect(result.attachment.id, 'att_proposal');
+    expect(result.submissionVersion, 3);
+  });
 }
