@@ -53,6 +53,40 @@ class SubmissionRepository {
     );
   }
 
+  Future<ReviewerPage> reviewerOptions(
+    String submissionId, {
+    required ReviewerStage stage,
+    String? query,
+    int page = 1,
+  }) async {
+    final cleanQuery = query?.trim();
+    final response = await _api.request(
+      'GET',
+      'program-submissions/$submissionId/reviewer-options',
+      query: {
+        'stage': stage.apiValue,
+        'page': '$page',
+        'pageSize': '20',
+        'q': cleanQuery == null || cleanQuery.isEmpty ? null : cleanQuery,
+      },
+    );
+    if (response.data is! List) {
+      throw const FormatException('Invalid reviewer options list.');
+    }
+    final items = (response.data as List)
+        .whereType<Map>()
+        .map(
+          (value) => ReviewerOption.fromJson(Map<String, dynamic>.from(value)),
+        )
+        .toList(growable: false);
+    return ReviewerPage(
+      items: items,
+      page: response.meta['page'] as int? ?? page,
+      totalPages: response.meta['totalPages'] as int? ?? 1,
+      totalItems: response.meta['totalItems'] as int? ?? items.length,
+    );
+  }
+
   Future<List<MasterOption>> locations() =>
       _masterOptions('master-data/locations');
 

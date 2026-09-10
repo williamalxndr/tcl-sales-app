@@ -201,6 +201,56 @@ class PolicyPerson {
   );
 }
 
+enum ReviewerStage {
+  acknowledgement('acknowledgement'),
+  approval('approval');
+
+  const ReviewerStage(this.apiValue);
+  final String apiValue;
+
+  static ReviewerStage? fromApiValue(String value) => switch (value) {
+    'acknowledgement' => ReviewerStage.acknowledgement,
+    'approval' => ReviewerStage.approval,
+    _ => null,
+  };
+}
+
+class ReviewerOption {
+  const ReviewerOption({required this.person, required this.eligibleStages});
+
+  final PolicyPerson person;
+  final List<ReviewerStage> eligibleStages;
+
+  factory ReviewerOption.fromJson(Map<String, dynamic> json) {
+    final person = json['person'];
+    if (person is! Map) {
+      throw const FormatException('Reviewer option is missing its person.');
+    }
+    return ReviewerOption(
+      person: PolicyPerson.fromJson(Map<String, dynamic>.from(person)),
+      eligibleStages: (json['eligibleStages'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .map(ReviewerStage.fromApiValue)
+          .whereType<ReviewerStage>()
+          .toList(growable: false),
+    );
+  }
+}
+
+class ReviewerPage {
+  const ReviewerPage({
+    required this.items,
+    required this.page,
+    required this.totalPages,
+    required this.totalItems,
+  });
+
+  final List<ReviewerOption> items;
+  final int page;
+  final int totalPages;
+  final int totalItems;
+}
+
 class SubmissionPage {
   const SubmissionPage({
     required this.items,
