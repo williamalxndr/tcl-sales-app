@@ -62,6 +62,22 @@ void main() {
             200,
           );
         }
+        if (request.url.path.endsWith('/program-submissions')) {
+          return http.Response(
+            jsonEncode({
+              'data': [],
+              'meta': {
+                'requestId': 'req_submissions',
+                'page': 1,
+                'pageSize': 20,
+                'totalItems': 0,
+                'totalPages': 0,
+                'hasNextPage': false,
+              },
+            }),
+            200,
+          );
+        }
         return http.Response(
           jsonEncode({
             'data': {'status': 'ready', 'database': 'ok'},

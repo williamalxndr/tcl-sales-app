@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
 import '../domain/user_profile.dart';
+import '../../../core/ui/app_theme.dart';
 
 class AuthenticatedShell extends ConsumerWidget {
   const AuthenticatedShell({super.key, required this.child});
@@ -15,7 +16,18 @@ class AuthenticatedShell extends ConsumerWidget {
     final user = auth.user!;
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: 58,
+        shape: const Border(bottom: BorderSide(color: AppColors.line)),
         title: const Text('PT Total Chemindo Loka'),
+        titleTextStyle: const TextStyle(
+          color: AppColors.ink,
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(left: 12),

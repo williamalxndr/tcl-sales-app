@@ -13,12 +13,14 @@ class ApiResponse<T> {
   const ApiResponse({
     required this.data,
     required this.requestId,
+    required this.meta,
     this.eTag,
     this.location,
   });
 
   final T data;
   final String requestId;
+  final Map<String, dynamic> meta;
   final String? eTag;
   final String? location;
 }
@@ -285,6 +287,7 @@ class ApiClient {
     return ApiResponse<dynamic>(
       data: decoded['data'],
       requestId: resolvedRequestId,
+      meta: Map<String, dynamic>.from(metadata as Map),
       eTag: response.headers['etag'],
       location: response.headers['location'],
     );

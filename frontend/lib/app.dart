@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/router/app_router.dart';
+import 'core/ui/app_theme.dart';
 
 class SalesApp extends ConsumerWidget {
   const SalesApp({super.key});
@@ -11,10 +12,7 @@ class SalesApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'Sales & Marketing',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1F5876)),
-        useMaterial3: true,
-      ),
+      theme: buildAppTheme(),
       routerConfig: ref.watch(appRouterProvider),
     );
   }

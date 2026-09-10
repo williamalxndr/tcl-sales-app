@@ -6,6 +6,7 @@ import '../session/session_store.dart';
 import '../../features/authentication/application/auth_controller.dart';
 import '../../features/authentication/data/auth_repository.dart';
 import '../../features/service_status/data/service_status_repository.dart';
+import '../../features/submissions/data/submission_repository.dart';
 
 /// The environment is selected once in main and explicitly overridden in tests.
 final appConfigProvider = Provider<AppConfig>((_) {
@@ -38,4 +39,8 @@ final serviceStatusRepositoryProvider = Provider<ServiceStatusRepository>((
   ref,
 ) {
   return ServiceStatusRepository(ref.watch(apiClientProvider));
+});
+
+final submissionRepositoryProvider = Provider<SubmissionRepository>((ref) {
+  return SubmissionRepository(ref.watch(apiClientProvider));
 });

@@ -8,6 +8,9 @@ import '../../features/authentication/presentation/auth_loading_screen.dart';
 import '../../features/authentication/presentation/authenticated_shell.dart';
 import '../../features/authentication/presentation/login_screen.dart';
 import '../../features/service_status/presentation/workspace_screen.dart';
+import '../../features/submissions/presentation/submission_detail_screen.dart';
+import '../../features/submissions/presentation/submission_list_screen.dart';
+import '../../features/submissions/presentation/submission_editor_screen.dart';
 
 const _loginPath = '/login';
 const _loadingPath = '/loading';
@@ -28,11 +31,35 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return path == _loginPath ? null : _loginPath;
       }
       if (path == _loginPath || path == _loadingPath) return '/';
+      if (path == '/' && auth.user!.roles.contains('submitter')) {
+        return '/submissions';
+      }
       return null;
     },
     routes: [
       GoRoute(path: _loadingPath, builder: (_, _) => const AuthLoadingScreen()),
       GoRoute(path: _loginPath, builder: (_, _) => const LoginScreen()),
+      GoRoute(
+        path: '/submissions',
+        builder: (_, _) =>
+            const AuthenticatedShell(child: SubmissionListScreen()),
+      ),
+      GoRoute(
+        path: '/submissions/:submissionId',
+        builder: (context, state) => AuthenticatedShell(
+          child: SubmissionDetailScreen(
+            submissionId: state.pathParameters['submissionId']!,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/submissions/:submissionId/edit',
+        builder: (context, state) => AuthenticatedShell(
+          child: SubmissionEditorScreen(
+            submissionId: state.pathParameters['submissionId']!,
+          ),
+        ),
+      ),
       GoRoute(
         path: '/',
         builder: (context, state) {
