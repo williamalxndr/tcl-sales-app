@@ -236,21 +236,7 @@ class _SubmissionDetailScreenState
                   ),
                   if (item.issues.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    const Text(
-                      'Yang perlu dilengkapi',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 8),
-                    ...item.issues.map(
-                      (issue) => Card(
-                        elevation: 0,
-                        color: const Color(0xFFFFF8E8),
-                        child: ListTile(
-                          leading: const Icon(Icons.info_outline),
-                          title: Text(issue.message),
-                        ),
-                      ),
-                    ),
+                    _SubmissionBlockers(issues: item.issues),
                   ],
                   const SizedBox(height: 20),
                   if (item.allowedActions.contains('update'))
@@ -274,6 +260,100 @@ class _SubmissionDetailData {
   const _SubmissionDetailData({required this.submission, this.policy});
   final Submission submission;
   final SubmissionPolicy? policy;
+}
+
+class _SubmissionBlockers extends StatelessWidget {
+  const _SubmissionBlockers({required this.issues});
+  final List<SubmissionIssue> issues;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label:
+        '${issues.length} hal yang perlu dilengkapi sebelum pengajuan dikirim',
+    child: Card(
+      color: const Color(0xFFFFF8E8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 19,
+                  color: Color(0xFF855A08),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Belum siap dikirim',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Text(
+                  '${issues.length} blocker',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF855A08),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Lengkapi ketentuan berikut sebelum pengajuan dapat diproses.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+            ),
+            const SizedBox(height: 10),
+            ...issues.map(
+              (issue) => Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child: Icon(
+                        Icons.circle,
+                        size: 5,
+                        color: Color(0xFF855A08),
+                      ),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            issue.fieldLabel,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: .25,
+                              color: Color(0xFF855A08),
+                            ),
+                          ),
+                          Text(
+                            issue.message,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _PolicySummary extends StatelessWidget {

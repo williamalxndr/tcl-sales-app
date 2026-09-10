@@ -129,6 +129,18 @@ class SubmissionIssue {
         code: json['code'] as String? ?? 'INVALID',
         message: json['message'] as String? ?? 'Data pengajuan belum lengkap.',
       );
+
+  String get fieldLabel => switch (field) {
+    'programName' => 'Nama program',
+    'periodStart' => 'Periode pelaksanaan',
+    'locationIds' => 'Lokasi',
+    'programTypeId' => 'Jenis program',
+    'estimatedCost' => 'Estimasi biaya',
+    'checkerId' => 'Checker',
+    'acknowledgement' => 'Reviewer Mengetahui',
+    'approval' => 'Reviewer Persetujuan',
+    _ => 'Ketentuan pengajuan',
+  };
 }
 
 class SubmissionPolicy {

@@ -25,4 +25,14 @@ void main() {
     expect(policy.allowedAttachmentExtensions, ['.pdf', '.xlsx']);
     expect(policy.routingConfigured, isTrue);
   });
+
+  test('maps submission issue fields to user-facing labels', () {
+    final issue = SubmissionIssue.fromJson({
+      'field': 'estimatedCost',
+      'code': 'REQUIRED',
+      'message': 'Estimated cost is required.',
+    });
+
+    expect(issue.fieldLabel, 'Estimasi biaya');
+  });
 }
