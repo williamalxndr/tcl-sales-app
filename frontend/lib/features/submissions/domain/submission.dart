@@ -73,6 +73,7 @@ class Submission extends SubmissionSummary {
     required this.allowedActions,
     required this.issues,
     required this.reviewPlan,
+    required this.attachments,
     super.programName,
     super.programType,
     super.programTypeId,
@@ -84,6 +85,7 @@ class Submission extends SubmissionSummary {
   final List<String> allowedActions;
   final List<SubmissionIssue> issues;
   final ReviewPlan reviewPlan;
+  final List<SubmissionAttachment> attachments;
 
   factory Submission.fromJson(Map<String, dynamic> json) {
     final summary = SubmissionSummary.fromJson(json);
@@ -115,7 +117,51 @@ class Submission extends SubmissionSummary {
             ? Map<String, dynamic>.from(json['reviewPlan'] as Map)
             : const {},
       ),
+      attachments: (json['attachments'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (attachment) => SubmissionAttachment.fromJson(
+              Map<String, dynamic>.from(attachment),
+            ),
+          )
+          .toList(growable: false),
     );
+  }
+}
+
+class SubmissionAttachment {
+  const SubmissionAttachment({
+    required this.id,
+    required this.submissionId,
+    required this.fileName,
+    required this.contentType,
+    required this.sizeBytes,
+    required this.scanStatus,
+    required this.uploadedAt,
+  });
+
+  final String id;
+  final String submissionId;
+  final String fileName;
+  final String contentType;
+  final int sizeBytes;
+  final String scanStatus;
+  final String uploadedAt;
+
+  factory SubmissionAttachment.fromJson(Map<String, dynamic> json) =>
+      SubmissionAttachment(
+        id: json['id'] as String? ?? '',
+        submissionId: json['submissionId'] as String? ?? '',
+        fileName: json['fileName'] as String? ?? 'Lampiran',
+        contentType: json['contentType'] as String? ?? '',
+        sizeBytes: json['sizeBytes'] as int? ?? 0,
+        scanStatus: json['scanStatus'] as String? ?? 'pending',
+        uploadedAt: json['uploadedAt'] as String? ?? '',
+      );
+
+  String get extension {
+    final dot = fileName.lastIndexOf('.');
+    return dot < 0 ? 'FILE' : fileName.substring(dot + 1).toUpperCase();
   }
 }
 

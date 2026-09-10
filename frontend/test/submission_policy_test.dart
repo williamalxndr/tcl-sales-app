@@ -54,4 +54,19 @@ void main() {
     ]);
     expect(plan.approvers.single.id, 'usr_ratna');
   });
+
+  test('parses attachment metadata returned with a submission', () {
+    final attachment = SubmissionAttachment.fromJson({
+      'id': 'att_proposal',
+      'submissionId': 'sub_0144',
+      'fileName': 'Proposal Program.pdf',
+      'contentType': 'application/pdf',
+      'sizeBytes': 1800000,
+      'scanStatus': 'clean',
+      'uploadedAt': '2026-08-21T03:06:00Z',
+    });
+
+    expect(attachment.extension, 'PDF');
+    expect(attachment.scanStatus, 'clean');
+  });
 }

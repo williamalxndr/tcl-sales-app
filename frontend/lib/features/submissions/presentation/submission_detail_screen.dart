@@ -6,6 +6,7 @@ import '../../../core/di/providers.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
 import 'submission_status_badge.dart';
+import 'submission_attachment_list.dart';
 
 class SubmissionDetailScreen extends ConsumerStatefulWidget {
   const SubmissionDetailScreen({super.key, required this.submissionId});
@@ -229,7 +230,9 @@ class _SubmissionDetailScreenState
                             ),
                           ),
                           const SizedBox(height: 9),
-                          const _AttachmentPlaceholder(),
+                          SubmissionAttachmentList(
+                            attachments: item.attachments,
+                          ),
                         ],
                       ),
                     ),
@@ -470,55 +473,6 @@ class _DetailRow extends StatelessWidget {
             style: TextStyle(
               fontWeight: emphasis ? FontWeight.w600 : FontWeight.w400,
             ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _AttachmentPlaceholder extends StatelessWidget {
-  const _AttachmentPlaceholder();
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      border: Border.all(color: const Color(0xFFE9EDF1)),
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.softNavy,
-            borderRadius: BorderRadius.all(Radius.circular(5)),
-          ),
-          child: Text(
-            'PDF',
-            style: TextStyle(
-              fontSize: 9,
-              fontFamily: 'monospace',
-              color: AppColors.navy,
-            ),
-          ),
-        ),
-        SizedBox(width: 11),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Dokumen pendukung',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-              Text(
-                'Lampiran akan tersedia setelah diunggah.',
-                style: TextStyle(fontSize: 11.5, color: Color(0xFF8B929A)),
-              ),
-            ],
           ),
         ),
       ],

@@ -6,6 +6,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/network/api_exception.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
+import 'submission_attachment_list.dart';
 
 class SubmissionEditorScreen extends ConsumerStatefulWidget {
   const SubmissionEditorScreen({super.key, required this.submissionId});
@@ -396,6 +397,14 @@ class _SubmissionEditorScreenState
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _FormSection(
+                      number: '04',
+                      title: 'Lampiran',
+                      child: SubmissionAttachmentList(
+                        attachments: _draft!.attachments,
                       ),
                     ),
                     const SizedBox(height: 20),
