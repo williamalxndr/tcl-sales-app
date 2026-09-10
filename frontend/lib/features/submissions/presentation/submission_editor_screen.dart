@@ -35,6 +35,7 @@ class _SubmissionEditorScreenState
   DateTime? _end;
   Object? _error;
   bool _saving = false;
+  bool _savingReviewPlan = false;
 
   @override
   void initState() {
@@ -148,6 +149,38 @@ class _SubmissionEditorScreenState
       if (mounted) setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveReviewPlan() async {
+    final draft = _draft;
+    if (draft == null) return;
+    setState(() {
+      _savingReviewPlan = true;
+      _error = null;
+    });
+    try {
+      final saved = await ref.read(submissionRepositoryProvider).updateDraft(
+        widget.submissionId,
+        {
+          'acknowledgerIds': _acknowledgers.map((person) => person.id).toList(),
+          'approverIds': _approvers.map((person) => person.id).toList(),
+        },
+        draft.version,
+      );
+      if (!mounted) return;
+      setState(() {
+        _draft = saved;
+        _acknowledgers = saved.reviewPlan.acknowledgers;
+        _approvers = saved.reviewPlan.approvers;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Rute pemeriksaan disimpan.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _savingReviewPlan = false);
     }
   }
 
@@ -337,6 +370,30 @@ class _SubmissionEditorScreenState
                             max: _policy?.maxApprovers ?? 3,
                             onChanged: (people) =>
                                 setState(() => _approvers = people),
+                          ),
+                          const SizedBox(height: 16),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.icon(
+                              onPressed: _savingReviewPlan
+                                  ? null
+                                  : _saveReviewPlan,
+                              icon: _savingReviewPlan
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.route_outlined, size: 17),
+                              label: Text(
+                                _savingReviewPlan
+                                    ? 'Menyimpan…'
+                                    : 'Simpan rute pemeriksaan',
+                              ),
+                            ),
                           ),
                         ],
                       ),
