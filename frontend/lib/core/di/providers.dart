@@ -5,6 +5,7 @@ import '../network/api_client.dart';
 import '../session/session_store.dart';
 import '../../features/authentication/application/auth_controller.dart';
 import '../../features/authentication/data/auth_repository.dart';
+import '../../features/backoffice/data/backoffice_repository.dart';
 import '../../features/service_status/data/service_status_repository.dart';
 import '../../features/submissions/data/submission_repository.dart';
 
@@ -43,4 +44,8 @@ final serviceStatusRepositoryProvider = Provider<ServiceStatusRepository>((
 
 final submissionRepositoryProvider = Provider<SubmissionRepository>((ref) {
   return SubmissionRepository(ref.watch(apiClientProvider));
+});
+
+final backofficeRepositoryProvider = Provider<BackofficeRepository>((ref) {
+  return BackofficeRepository(ref.watch(apiClientProvider));
 });
