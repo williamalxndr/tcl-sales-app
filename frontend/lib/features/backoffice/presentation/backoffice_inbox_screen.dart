@@ -21,6 +21,7 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
   var _page = 1;
   String? _appliedProgramNumber;
   String? _selectedStatus;
+  _ReviewerRoleFilter? _selectedRole;
   String? _appliedStatus;
 
   @override
@@ -58,13 +59,14 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
 
   void _applyFilters() {
     _appliedProgramNumber = _programNumber.text.trim();
-    _appliedStatus = _selectedStatus;
+    _appliedStatus = _selectedRole?.submissionStatus ?? _selectedStatus;
     _reload(firstPage: true);
   }
 
   void _resetFilters() {
     _programNumber.clear();
     _selectedStatus = null;
+    _selectedRole = null;
     _appliedProgramNumber = null;
     _appliedStatus = null;
     _reload(firstPage: true);
@@ -159,8 +161,32 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                                   child: Text('Dibatalkan'),
                                 ),
                               ],
-                              onChanged: (value) =>
-                                  setState(() => _selectedStatus = value),
+                              onChanged: (value) => setState(() {
+                                _selectedStatus = value;
+                                if (value != null) _selectedRole = null;
+                              }),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 210,
+                            child: DropdownButtonFormField<_ReviewerRoleFilter>(
+                              initialValue: _selectedRole,
+                              decoration: const InputDecoration(
+                                labelText: 'Peran reviewer',
+                              ),
+                              hint: const Text('Semua peran'),
+                              items: _ReviewerRoleFilter.values
+                                  .map(
+                                    (role) => DropdownMenuItem(
+                                      value: role,
+                                      child: Text(role.label),
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                              onChanged: (value) => setState(() {
+                                _selectedRole = value;
+                                if (value != null) _selectedStatus = null;
+                              }),
                             ),
                           ),
                           FilledButton(
@@ -532,4 +558,15 @@ String _costLabel(String? amount) {
     (_) => '.',
   );
   return 'Rp $grouped';
+}
+
+enum _ReviewerRoleFilter {
+  checker('Checker', 'pendingChecker'),
+  acknowledger('Mengetahui', 'pendingAcknowledgement'),
+  approver('Menyetujui', 'pendingApproval');
+
+  const _ReviewerRoleFilter(this.label, this.submissionStatus);
+
+  final String label;
+  final String submissionStatus;
 }
