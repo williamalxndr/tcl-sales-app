@@ -17,8 +17,7 @@ import '../../features/submissions/presentation/submission_editor_screen.dart';
 const _loginPath = '/login';
 const _loadingPath = '/loading';
 
-/// Routes redirect only from session state. Feature pages retain responsibility
-/// for their own resource-level role checks when they are added.
+/// Session and coarse role guards run before feature-level resource checks.
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refresh = ref.watch(authRouterRefreshProvider);
   final router = GoRouter(
@@ -33,13 +32,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return path == _loginPath ? null : _loginPath;
       }
       if (path == _loginPath || path == _loadingPath) return '/';
-      if (path == '/' && auth.user!.roles.contains('submitter')) {
-        return '/submissions';
-      }
-      if (path == '/' && auth.user!.roles.any(_isReviewerRole)) {
-        return '/backoffice';
-      }
-      return null;
+      return roleRedirectFor(path, auth.user!.roles);
     },
     routes: [
       GoRoute(path: _loadingPath, builder: (_, _) => const AuthLoadingScreen()),
@@ -112,6 +105,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
 bool _isReviewerRole(String role) =>
     role == 'checker' || role == 'acknowledger' || role == 'approver';
+
+String? roleRedirectFor(String path, List<String> roles) {
+  final isSubmitter = roles.contains('submitter');
+  final isReviewer = roles.any(_isReviewerRole);
+  final landing = isSubmitter
+      ? '/submissions'
+      : isReviewer
+      ? '/backoffice'
+      : '/';
+
+  if (path.startsWith('/submissions') && !isSubmitter) return landing;
+  if (path.startsWith('/backoffice') && !isReviewer) return landing;
+  if (path == '/' && landing != '/') return landing;
+  return null;
+}
 
 final authRouterRefreshProvider = Provider<ValueNotifier<AuthState>>((ref) {
   final notifier = ValueNotifier(ref.read(authControllerProvider));
