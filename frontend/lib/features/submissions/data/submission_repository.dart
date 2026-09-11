@@ -186,6 +186,20 @@ class SubmissionRepository {
     return Submission.fromJson(data);
   }
 
+  Future<Submission> cancelSubmission(
+    String submissionId, {
+    required String reason,
+    required int version,
+  }) async {
+    final data = await _api.postObject(
+      'program-submissions/$submissionId/cancel',
+      body: {'reason': reason.trim()},
+      idempotencyKey: _newIdempotencyKey('cancel'),
+      ifMatch: '"$version"',
+    );
+    return Submission.fromJson(data);
+  }
+
   Future<FileDownload> downloadPdf(
     String submissionId,
     String programNumber,

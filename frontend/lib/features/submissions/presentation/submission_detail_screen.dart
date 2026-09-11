@@ -26,6 +26,7 @@ class _SubmissionDetailScreenState
   String? _downloadingAttachmentId;
   bool _downloadingPdf = false;
   bool _submitting = false;
+  bool _cancelling = false;
   ApiException? _submitFailure;
   @override
   void initState() {
@@ -192,6 +193,89 @@ class _SubmissionDetailScreenState
     }
   }
 
+  Future<void> _cancel(Submission submission) async {
+    final reason = TextEditingController();
+    final confirmedReason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Batalkan pengajuan?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${submission.programNumber} akan ditutup dan task pemeriksaan yang tersisa akan dibatalkan.',
+                style: const TextStyle(color: AppColors.muted, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reason,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 2000,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Alasan pembatalan',
+                  hintText: 'Jelaskan alasan pengajuan dibatalkan',
+                  alignLabelWithHint: true,
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Kembali'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF9C4030),
+              ),
+              onPressed: reason.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.of(dialogContext).pop(reason.text.trim()),
+              child: const Text('Batalkan pengajuan'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reason.dispose();
+    if (confirmedReason == null || !mounted) return;
+
+    setState(() {
+      _cancelling = true;
+      _submitFailure = null;
+    });
+    try {
+      final cancelled = await ref
+          .read(submissionRepositoryProvider)
+          .cancelSubmission(
+            submission.id,
+            reason: confirmedReason,
+            version: submission.version,
+          );
+      if (!mounted) return;
+      setState(() {
+        _future = Future.value(_SubmissionDetailData(submission: cancelled));
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengajuan berhasil dibatalkan.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: Center(
@@ -244,7 +328,8 @@ class _SubmissionDetailScreenState
                         onPressed:
                             item.allowedActions.contains('downloadPdf') &&
                                 !_downloadingPdf &&
-                                _downloadingAttachmentId == null
+                                _downloadingAttachmentId == null &&
+                                !_cancelling
                             ? () => _downloadPdf(item)
                             : null,
                         icon: _downloadingPdf
@@ -412,7 +497,7 @@ class _SubmissionDetailScreenState
                           const SizedBox(height: 9),
                           SubmissionAttachmentList(
                             attachments: item.attachments,
-                            onDownload: _downloadingPdf
+                            onDownload: _downloadingPdf || _cancelling
                                 ? null
                                 : _downloadAttachment,
                             downloadingAttachmentId: _downloadingAttachmentId,
@@ -433,16 +518,40 @@ class _SubmissionDetailScreenState
                     children: [
                       if (item.allowedActions.contains('update'))
                         OutlinedButton.icon(
-                          onPressed: _submitting
+                          onPressed: _submitting || _cancelling
                               ? null
                               : () =>
                                     context.go('/submissions/${item.id}/edit'),
                           icon: const Icon(Icons.edit_outlined),
                           label: const Text('Lengkapi draft'),
                         ),
+                      if (item.allowedActions.contains('cancel'))
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF9C4030),
+                            side: const BorderSide(color: Color(0xFFD7A59C)),
+                          ),
+                          onPressed: _cancelling || _submitting
+                              ? null
+                              : () => _cancel(item),
+                          icon: _cancelling
+                              ? const SizedBox(
+                                  width: 17,
+                                  height: 17,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.block_outlined, size: 18),
+                          label: Text(
+                            _cancelling ? 'Membatalkan…' : 'Batalkan pengajuan',
+                          ),
+                        ),
                       if (item.allowedActions.contains('submit'))
                         FilledButton.icon(
-                          onPressed: _submitting ? null : () => _submit(item),
+                          onPressed: _submitting || _cancelling
+                              ? null
+                              : () => _submit(item),
                           icon: _submitting
                               ? const SizedBox(
                                   width: 17,
