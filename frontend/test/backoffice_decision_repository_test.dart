@@ -53,4 +53,51 @@ void main() {
 
     expect(detail.submission.version, 6);
   });
+
+  test('rejects one active review task with concurrency headers', () async {
+    final api = ApiClient(
+      baseUrl: Uri.parse('https://api.example.com/api/v1'),
+      client: MockClient((request) async {
+        expect(
+          request.url.path,
+          '/api/v1/backoffice/program-submissions/sub_1/'
+          'review-tasks/tsk_1/reject',
+        );
+        expect(request.headers['if-match'], '"6"');
+        expect(request.headers['idempotency-key'], startsWith('reject-'));
+        expect(jsonDecode(request.body), {'note': 'Anggaran perlu ditinjau.'});
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'id': 'sub_1',
+              'programNumber': 'PRG-2026-0001',
+              'locations': [],
+              'owner': {'id': 'usr_1', 'fullName': 'Rizky'},
+              'status': 'rejected',
+              'version': 7,
+              'reviewPlan': {},
+              'reviewTasks': [],
+              'myActiveTaskIds': [],
+              'attachments': [],
+              'allowedActions': ['downloadPdf'],
+              'submissionIssues': [],
+            },
+            'meta': {'requestId': 'req_reject'},
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(api.close);
+
+    final detail = await BackofficeRepository(api).rejectTask(
+      submissionId: 'sub_1',
+      taskId: 'tsk_1',
+      version: 6,
+      note: ' Anggaran perlu ditinjau. ',
+    );
+
+    expect(detail.submission.status, 'rejected');
+    expect(detail.submission.version, 7);
+  });
 }

@@ -183,6 +183,85 @@ class _BackofficeDetailScreenState
     }
   }
 
+  Future<void> _reject(BackofficeSubmissionDetail detail) async {
+    final taskId = detail.submission.myActiveTaskIds.firstOrNull;
+    if (taskId == null) return;
+    final note = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          'Tolak pengajuan',
+          style: TextStyle(color: Color(0xFF9C4030)),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '${detail.submission.programNumber} akan ditolak dan seluruh task tersisa akan ditutup.',
+              style: const TextStyle(color: AppColors.muted, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: note,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 5,
+              maxLength: 2000,
+              decoration: const InputDecoration(
+                labelText: 'Catatan (opsional)',
+                hintText: 'Tambahkan alasan atau catatan penolakan',
+                alignLabelWithHint: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF9C4030),
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Ya, tolak'),
+          ),
+        ],
+      ),
+    );
+    final decisionNote = note.text;
+    note.dispose();
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deciding = true);
+    try {
+      final updated = await ref
+          .read(backofficeRepositoryProvider)
+          .rejectTask(
+            submissionId: detail.submission.id,
+            taskId: taskId,
+            version: detail.submission.version,
+            note: decisionNote,
+          );
+      if (!mounted) return;
+      setState(() => _future = Future.value(updated));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengajuan berhasil ditolak.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _deciding = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: FutureBuilder<BackofficeSubmissionDetail>(
@@ -202,6 +281,7 @@ class _BackofficeDetailScreenState
           onDownloadAttachment: _downloadAttachment,
           onDownloadPdf: _downloadPdf,
           onApprove: _approve,
+          onReject: _reject,
         );
       },
     ),
@@ -217,6 +297,7 @@ class _DetailDocument extends StatelessWidget {
     required this.onDownloadAttachment,
     required this.onDownloadPdf,
     required this.onApprove,
+    required this.onReject,
   });
 
   final BackofficeSubmissionDetail detail;
@@ -226,6 +307,7 @@ class _DetailDocument extends StatelessWidget {
   final ValueChanged<SubmissionAttachment> onDownloadAttachment;
   final ValueChanged<Submission> onDownloadPdf;
   final ValueChanged<BackofficeSubmissionDetail> onApprove;
+  final ValueChanged<BackofficeSubmissionDetail> onReject;
 
   @override
   Widget build(BuildContext context) {
@@ -357,7 +439,8 @@ class _DetailDocument extends StatelessWidget {
                   const SizedBox(height: 8),
                   SubmissionReviewProgress(submission: item),
                 ],
-                if (item.allowedActions.contains('approve')) ...[
+                if (item.allowedActions.contains('approve') ||
+                    item.allowedActions.contains('reject')) ...[
                   const SizedBox(height: 18),
                   Card(
                     child: Padding(
@@ -373,25 +456,43 @@ class _DetailDocument extends StatelessWidget {
                               style: const TextStyle(color: AppColors.muted),
                             ),
                           ),
-                          FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF2F6B48),
+                          if (item.allowedActions.contains('approve'))
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF2F6B48),
+                              ),
+                              onPressed: deciding
+                                  ? null
+                                  : () => onApprove(detail),
+                              icon: deciding
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.check, size: 18),
+                              label: Text(deciding ? 'Memproses…' : 'Approve'),
                             ),
-                            onPressed: deciding
-                                ? null
-                                : () => onApprove(detail),
-                            icon: deciding
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.check, size: 18),
-                            label: Text(deciding ? 'Memproses…' : 'Approve'),
-                          ),
+                          if (item.allowedActions.contains('approve') &&
+                              item.allowedActions.contains('reject'))
+                            const SizedBox(width: 9),
+                          if (item.allowedActions.contains('reject'))
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF9C4030),
+                                side: const BorderSide(
+                                  color: Color(0xFF9C4030),
+                                ),
+                              ),
+                              onPressed: deciding
+                                  ? null
+                                  : () => onReject(detail),
+                              icon: const Icon(Icons.close, size: 18),
+                              label: const Text('Not Approved'),
+                            ),
                         ],
                       ),
                     ),

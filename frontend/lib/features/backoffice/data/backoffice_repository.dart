@@ -150,6 +150,23 @@ class BackofficeRepository {
     return BackofficeSubmissionDetail.fromJson(data);
   }
 
+  Future<BackofficeSubmissionDetail> rejectTask({
+    required String submissionId,
+    required String taskId,
+    required int version,
+    String? note,
+  }) async {
+    final cleanNote = note?.trim();
+    final data = await _api.postObject(
+      'backoffice/program-submissions/$submissionId/'
+      'review-tasks/$taskId/reject',
+      body: {if (cleanNote != null && cleanNote.isNotEmpty) 'note': cleanNote},
+      ifMatch: '"$version"',
+      idempotencyKey: _newIdempotencyKey('reject'),
+    );
+    return BackofficeSubmissionDetail.fromJson(data);
+  }
+
   String _downloadFileName(String? disposition, String fallback) {
     final encoded = RegExp(
       r"filename\*=UTF-8''([^;]+)",
