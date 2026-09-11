@@ -95,4 +95,41 @@ class BackofficeRepository {
     );
     return BackofficeSubmissionDetail.fromJson(data);
   }
+
+  Future<FileDownload> downloadAttachment(
+    String submissionId,
+    SubmissionAttachment attachment,
+  ) async {
+    final response = await _api.getBytes(
+      'backoffice/program-submissions/$submissionId/'
+      'attachments/${attachment.id}/content',
+    );
+    return FileDownload(
+      bytes: response.bytes,
+      fileName: _downloadFileName(
+        response.headers['content-disposition'],
+        attachment.fileName,
+      ),
+      contentType: response.headers['content-type'] ?? attachment.contentType,
+    );
+  }
+
+  String _downloadFileName(String? disposition, String fallback) {
+    final encoded = RegExp(
+      r"filename\*=UTF-8''([^;]+)",
+      caseSensitive: false,
+    ).firstMatch(disposition ?? '');
+    final quoted = RegExp(
+      r'filename="([^\"]+)"',
+      caseSensitive: false,
+    ).firstMatch(disposition ?? '');
+    final name = encoded == null
+        ? quoted?.group(1)
+        : Uri.decodeComponent(encoded.group(1)!);
+    final sanitized = (name ?? fallback).replaceAll(
+      RegExp(r'[\\/:*?"<>|]'),
+      '_',
+    );
+    return sanitized.trim().isEmpty ? fallback : sanitized.trim();
+  }
 }

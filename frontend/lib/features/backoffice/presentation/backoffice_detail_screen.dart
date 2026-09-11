@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/di/providers.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/platform/downloaded_file_saver.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../submissions/domain/submission.dart';
 import '../../submissions/presentation/submission_status_badge.dart';
@@ -23,6 +24,7 @@ class BackofficeDetailScreen extends ConsumerStatefulWidget {
 class _BackofficeDetailScreenState
     extends ConsumerState<BackofficeDetailScreen> {
   late Future<BackofficeSubmissionDetail> _future;
+  String? _downloadingAttachmentId;
 
   @override
   void initState() {
@@ -35,6 +37,38 @@ class _BackofficeDetailScreenState
 
   void _reload() => setState(() => _future = _load());
 
+  Future<void> _downloadAttachment(SubmissionAttachment attachment) async {
+    setState(() => _downloadingAttachmentId = attachment.id);
+    try {
+      final download = await ref
+          .read(backofficeRepositoryProvider)
+          .downloadAttachment(widget.submissionId, attachment);
+      await const DownloadedFileSaver().save(
+        bytes: download.bytes,
+        fileName: download.fileName,
+        contentType: download.contentType,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${download.fileName} berhasil diunduh.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lampiran tidak dapat disimpan.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingAttachmentId = null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: FutureBuilder<BackofficeSubmissionDetail>(
@@ -46,16 +80,26 @@ class _BackofficeDetailScreenState
         if (snapshot.hasError) {
           return _DetailError(error: snapshot.error, onRetry: _reload);
         }
-        return _DetailDocument(detail: snapshot.requireData);
+        return _DetailDocument(
+          detail: snapshot.requireData,
+          downloadingAttachmentId: _downloadingAttachmentId,
+          onDownloadAttachment: _downloadAttachment,
+        );
       },
     ),
   );
 }
 
 class _DetailDocument extends StatelessWidget {
-  const _DetailDocument({required this.detail});
+  const _DetailDocument({
+    required this.detail,
+    required this.downloadingAttachmentId,
+    required this.onDownloadAttachment,
+  });
 
   final BackofficeSubmissionDetail detail;
+  final String? downloadingAttachmentId;
+  final ValueChanged<SubmissionAttachment> onDownloadAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +187,18 @@ class _DetailDocument extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 9),
-                          ...item.attachments.map(_AttachmentMetadata.new),
+                          ...item.attachments.map(
+                            (attachment) => _AttachmentMetadata(
+                              attachment,
+                              downloading:
+                                  downloadingAttachmentId == attachment.id,
+                              onDownload:
+                                  attachment.scanStatus == 'clean' &&
+                                      downloadingAttachmentId == null
+                                  ? () => onDownloadAttachment(attachment)
+                                  : null,
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -220,9 +275,15 @@ class _DetailFields extends StatelessWidget {
 }
 
 class _AttachmentMetadata extends StatelessWidget {
-  const _AttachmentMetadata(this.attachment);
+  const _AttachmentMetadata(
+    this.attachment, {
+    required this.downloading,
+    required this.onDownload,
+  });
 
   final SubmissionAttachment attachment;
+  final bool downloading;
+  final VoidCallback? onDownload;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -266,6 +327,17 @@ class _AttachmentMetadata extends StatelessWidget {
               ),
             ],
           ),
+        ),
+        TextButton.icon(
+          onPressed: onDownload,
+          icon: downloading
+              ? const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.download_outlined, size: 17),
+          label: Text(downloading ? 'Mengunduh…' : 'Unduh'),
         ),
       ],
     ),
