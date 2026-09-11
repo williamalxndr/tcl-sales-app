@@ -13,6 +13,8 @@ class BackofficeRepository {
     String? status,
     BackofficePersonField? reviewerField,
     String? reviewerId,
+    String? periodStartFrom,
+    String? periodStartTo,
   }) async {
     final cleanProgramNumber = programNumber?.trim();
     final response = await _api.request(
@@ -27,6 +29,8 @@ class BackofficeRepository {
             : cleanProgramNumber,
         'status': status,
         if (reviewerField != null) reviewerField.queryParameter: reviewerId,
+        'periodStartFrom': periodStartFrom,
+        'periodStartTo': periodStartTo,
       },
     );
     final data = response.data;

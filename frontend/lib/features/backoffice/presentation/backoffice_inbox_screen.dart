@@ -28,6 +28,10 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
   BackofficePersonField? _appliedReviewerField;
   String? _appliedReviewerId;
   Future<BackofficePeoplePage>? _peopleFuture;
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+  String? _appliedDateFrom;
+  String? _appliedDateTo;
 
   @override
   void initState() {
@@ -49,6 +53,8 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
         status: _appliedStatus,
         reviewerField: _appliedReviewerField,
         reviewerId: _appliedReviewerId,
+        periodStartFrom: _appliedDateFrom,
+        periodStartTo: _appliedDateTo,
       );
 
   void _reload({bool firstPage = false}) => setState(() {
@@ -69,6 +75,8 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
     _appliedStatus = _selectedRole?.submissionStatus ?? _selectedStatus;
     _appliedReviewerField = _selectedReviewerId == null ? null : _selectedRole;
     _appliedReviewerId = _selectedReviewerId;
+    _appliedDateFrom = _apiDate(_dateFrom);
+    _appliedDateTo = _apiDate(_dateTo);
     _reload(firstPage: true);
   }
 
@@ -78,11 +86,38 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
     _selectedRole = null;
     _selectedReviewerId = null;
     _peopleFuture = null;
+    _dateFrom = null;
+    _dateTo = null;
     _appliedProgramNumber = null;
     _appliedStatus = null;
     _appliedReviewerField = null;
     _appliedReviewerId = null;
+    _appliedDateFrom = null;
+    _appliedDateTo = null;
     _reload(firstPage: true);
+  }
+
+  Future<void> _pickDate({required bool from}) async {
+    final initial = from ? _dateFrom : _dateTo;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      helpText: from ? 'Pilih awal periode' : 'Pilih akhir periode',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (from) {
+        _dateFrom = picked;
+        if (_dateTo != null && _dateTo!.isBefore(picked)) _dateTo = picked;
+      } else {
+        _dateTo = picked;
+        if (_dateFrom != null && _dateFrom!.isAfter(picked)) {
+          _dateFrom = picked;
+        }
+      }
+    });
   }
 
   @override
@@ -224,6 +259,55 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                               value: _selectedReviewerId,
                               onChanged: (value) =>
                                   setState(() => _selectedReviewerId = value),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 210,
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: 'Periode pelaksanaan',
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => _pickDate(from: true),
+                                      child: Text(
+                                        _dateFrom == null
+                                            ? 'Dari'
+                                            : _apiDate(_dateFrom)!,
+                                        style: TextStyle(
+                                          color: _dateFrom == null
+                                              ? AppColors.faint
+                                              : AppColors.ink,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const Text('—'),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => _pickDate(from: false),
+                                      child: Text(
+                                        _dateTo == null
+                                            ? 'Sampai'
+                                            : _apiDate(_dateTo)!,
+                                        style: TextStyle(
+                                          color: _dateTo == null
+                                              ? AppColors.faint
+                                              : AppColors.ink,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.calendar_today_outlined,
+                                    size: 15,
+                                    color: AppColors.faint,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           FilledButton(
@@ -657,3 +741,10 @@ class _ReviewerPersonFilter extends StatelessWidget {
 String _personLabel(PolicyPerson person) => person.jobTitle == null
     ? person.fullName
     : '${person.fullName} · ${person.jobTitle}';
+
+String? _apiDate(DateTime? date) {
+  if (date == null) return null;
+  return '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+}

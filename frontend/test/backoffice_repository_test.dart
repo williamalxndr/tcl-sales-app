@@ -146,4 +146,26 @@ void main() {
     expect(requests.first.queryParameters['scope'], 'inbox');
     expect(requests.last.queryParameters['acknowledgerId'], 'usr_dewi');
   });
+
+  test('sends inclusive execution date range filters', () async {
+    final api = ApiClient(
+      baseUrl: Uri.parse('https://api.example.com/api/v1'),
+      client: MockClient((request) async {
+        expect(request.url.queryParameters['periodStartFrom'], '2026-09-01');
+        expect(request.url.queryParameters['periodStartTo'], '2026-09-30');
+        return http.Response(
+          jsonEncode({
+            'data': [],
+            'meta': {'requestId': 'req_dates'},
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(api.close);
+
+    await BackofficeRepository(
+      api,
+    ).listInbox(periodStartFrom: '2026-09-01', periodStartTo: '2026-09-30');
+  });
 }
