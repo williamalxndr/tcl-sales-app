@@ -50,6 +50,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             const AuthenticatedShell(child: BackofficeInboxScreen()),
       ),
       GoRoute(
+        path: '/backoffice/history',
+        builder: (_, _) => const AuthenticatedShell(
+          child: BackofficeInboxScreen(history: true),
+        ),
+      ),
+      GoRoute(
         path: '/backoffice/submissions/:submissionId',
         builder: (_, state) => AuthenticatedShell(
           child: BackofficeDetailScreen(

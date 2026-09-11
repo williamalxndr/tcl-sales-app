@@ -10,7 +10,9 @@ import '../../submissions/presentation/submission_status_badge.dart';
 import '../domain/backoffice_submission.dart';
 
 class BackofficeInboxScreen extends ConsumerStatefulWidget {
-  const BackofficeInboxScreen({super.key});
+  const BackofficeInboxScreen({super.key, this.history = false});
+
+  final bool history;
 
   @override
   ConsumerState<BackofficeInboxScreen> createState() =>
@@ -46,17 +48,37 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
     super.dispose();
   }
 
-  Future<BackofficeSubmissionPage> _load() => ref
-      .read(backofficeRepositoryProvider)
-      .listInbox(
-        page: _page,
-        programNumber: _appliedProgramNumber,
-        status: _appliedStatus,
-        reviewerField: _appliedReviewerField,
-        reviewerId: _appliedReviewerId,
-        periodStartFrom: _appliedDateFrom,
-        periodStartTo: _appliedDateTo,
-      );
+  Future<BackofficeSubmissionPage> _load() {
+    final repository = ref.read(backofficeRepositoryProvider);
+    final parameters = (
+      page: _page,
+      programNumber: _appliedProgramNumber,
+      status: _appliedStatus,
+      reviewerField: _appliedReviewerField,
+      reviewerId: _appliedReviewerId,
+      periodStartFrom: _appliedDateFrom,
+      periodStartTo: _appliedDateTo,
+    );
+    return widget.history
+        ? repository.listHistory(
+            page: parameters.page,
+            programNumber: parameters.programNumber,
+            status: parameters.status,
+            reviewerField: parameters.reviewerField,
+            reviewerId: parameters.reviewerId,
+            periodStartFrom: parameters.periodStartFrom,
+            periodStartTo: parameters.periodStartTo,
+          )
+        : repository.listInbox(
+            page: parameters.page,
+            programNumber: parameters.programNumber,
+            status: parameters.status,
+            reviewerField: parameters.reviewerField,
+            reviewerId: parameters.reviewerId,
+            periodStartFrom: parameters.periodStartFrom,
+            periodStartTo: parameters.periodStartTo,
+          );
+  }
 
   void _reload({bool firstPage = false}) => setState(() {
     if (firstPage) _page = 1;
@@ -131,14 +153,47 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Backoffice',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.history ? 'Riwayat Review' : 'Backoffice',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(
+                        value: false,
+                        icon: Icon(Icons.inbox_outlined),
+                        label: Text('Inbox'),
+                      ),
+                      ButtonSegment(
+                        value: true,
+                        icon: Icon(Icons.history),
+                        label: Text('Riwayat'),
+                      ),
+                    ],
+                    selected: {widget.history},
+                    onSelectionChanged: (selection) {
+                      context.go(
+                        selection.single
+                            ? '/backoffice/history'
+                            : '/backoffice',
+                      );
+                    },
+                  ),
+                ],
               ),
               const SizedBox(height: 3),
-              const Text(
-                'Pengajuan yang sedang menunggu tindakan Anda.',
-                style: TextStyle(color: AppColors.muted),
+              Text(
+                widget.history
+                    ? 'Tugas pemeriksaan yang telah Anda selesaikan.'
+                    : 'Pengajuan yang sedang menunggu tindakan Anda.',
+                style: const TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 20),
               Card(
@@ -155,9 +210,14 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                         ),
                       ),
                       const SizedBox(height: 3),
-                      const Text(
-                        'Hanya pengajuan yang sedang menjadi giliran Anda yang ditampilkan.',
-                        style: TextStyle(fontSize: 12, color: AppColors.faint),
+                      Text(
+                        widget.history
+                            ? 'Hanya pengajuan dengan task yang telah Anda putuskan yang ditampilkan.'
+                            : 'Hanya pengajuan yang sedang menjadi giliran Anda yang ditampilkan.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.faint,
+                        ),
                       ),
                       const SizedBox(height: 14),
                       Wrap(
@@ -247,7 +307,12 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                                               .read(
                                                 backofficeRepositoryProvider,
                                               )
-                                              .listFilterPeople(field: value);
+                                              .listFilterPeople(
+                                                field: value,
+                                                scope: widget.history
+                                                    ? 'history'
+                                                    : 'inbox',
+                                              );
                                     if (value != null) _selectedStatus = null;
                                   }),
                                 ),
@@ -341,11 +406,19 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                     }
                     final result = snapshot.requireData;
                     if (result.items.isEmpty) {
-                      return _EmptyInbox(onRefresh: () => _reload());
+                      return _EmptyInbox(
+                        history: widget.history,
+                        onRefresh: () => _reload(),
+                      );
                     }
                     return Column(
                       children: [
-                        Expanded(child: _InboxTable(items: result.items)),
+                        Expanded(
+                          child: _InboxTable(
+                            items: result.items,
+                            history: widget.history,
+                          ),
+                        ),
                         const SizedBox(height: 12),
                         _InboxPagination(
                           page: result.page,
@@ -368,9 +441,10 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
 }
 
 class _InboxTable extends StatelessWidget {
-  const _InboxTable({required this.items});
+  const _InboxTable({required this.items, required this.history});
 
   final List<BackofficeSubmissionSummary> items;
+  final bool history;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -382,9 +456,12 @@ class _InboxTable extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
           child: Row(
             children: [
-              const Text(
-                'Inbox reviewer',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              Text(
+                history ? 'Riwayat reviewer' : 'Inbox reviewer',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(width: 10),
               Text(
@@ -409,6 +486,7 @@ class _InboxTable extends StatelessWidget {
                       separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, index) => _InboxRow(
                         item: items[index],
+                        history: history,
                         onTap: () => context.push(
                           '/backoffice/submissions/'
                           '${items[index].submission.id}',
@@ -451,9 +529,14 @@ class _InboxHeader extends StatelessWidget {
 }
 
 class _InboxRow extends StatelessWidget {
-  const _InboxRow({required this.item, required this.onTap});
+  const _InboxRow({
+    required this.item,
+    required this.history,
+    required this.onTap,
+  });
 
   final BackofficeSubmissionSummary item;
+  final bool history;
   final VoidCallback onTap;
 
   @override
@@ -535,7 +618,7 @@ class _InboxRow extends StatelessWidget {
                       vertical: 4,
                     ),
                     child: Text(
-                      _stageLabel(item.currentStage),
+                      history ? 'Selesai' : _stageLabel(item.currentStage),
                       style: const TextStyle(
                         fontSize: 11.5,
                         color: AppColors.navy,
@@ -632,8 +715,9 @@ class _InboxPagination extends StatelessWidget {
 }
 
 class _EmptyInbox extends StatelessWidget {
-  const _EmptyInbox({required this.onRefresh});
+  const _EmptyInbox({required this.history, required this.onRefresh});
 
+  final bool history;
   final VoidCallback onRefresh;
 
   @override
@@ -643,9 +727,11 @@ class _EmptyInbox extends StatelessWidget {
       children: [
         const Icon(Icons.task_alt, size: 38, color: AppColors.navy),
         const SizedBox(height: 12),
-        const Text(
-          'Tidak ada pengajuan yang menunggu Anda.',
-          style: TextStyle(fontWeight: FontWeight.w600),
+        Text(
+          history
+              ? 'Belum ada tugas review yang selesai.'
+              : 'Tidak ada pengajuan yang menunggu Anda.',
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 10),
         OutlinedButton(onPressed: onRefresh, child: const Text('Muat ulang')),

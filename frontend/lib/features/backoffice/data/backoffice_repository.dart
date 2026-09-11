@@ -17,11 +17,50 @@ class BackofficeRepository {
     String? reviewerId,
     String? periodStartFrom,
     String? periodStartTo,
+  }) => _listSubmissions(
+    path: 'backoffice/program-submissions',
+    page: page,
+    programNumber: programNumber,
+    status: status,
+    reviewerField: reviewerField,
+    reviewerId: reviewerId,
+    periodStartFrom: periodStartFrom,
+    periodStartTo: periodStartTo,
+  );
+
+  Future<BackofficeSubmissionPage> listHistory({
+    int page = 1,
+    String? programNumber,
+    String? status,
+    BackofficePersonField? reviewerField,
+    String? reviewerId,
+    String? periodStartFrom,
+    String? periodStartTo,
+  }) => _listSubmissions(
+    path: 'backoffice/review-history',
+    page: page,
+    programNumber: programNumber,
+    status: status,
+    reviewerField: reviewerField,
+    reviewerId: reviewerId,
+    periodStartFrom: periodStartFrom,
+    periodStartTo: periodStartTo,
+  );
+
+  Future<BackofficeSubmissionPage> _listSubmissions({
+    required String path,
+    required int page,
+    String? programNumber,
+    String? status,
+    BackofficePersonField? reviewerField,
+    String? reviewerId,
+    String? periodStartFrom,
+    String? periodStartTo,
   }) async {
     final cleanProgramNumber = programNumber?.trim();
     final response = await _api.request(
       'GET',
-      'backoffice/program-submissions',
+      path,
       query: {
         'page': '$page',
         'pageSize': '20',
@@ -37,7 +76,7 @@ class BackofficeRepository {
     );
     final data = response.data;
     if (data is! List) {
-      throw const FormatException('Invalid backoffice inbox response.');
+      throw const FormatException('Invalid backoffice list response.');
     }
     final items = data
         .whereType<Map>()

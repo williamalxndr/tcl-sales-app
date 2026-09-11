@@ -168,4 +168,32 @@ void main() {
       api,
     ).listInbox(periodStartFrom: '2026-09-01', periodStartTo: '2026-09-30');
   });
+
+  test('loads completed assignments from review history', () async {
+    final api = ApiClient(
+      baseUrl: Uri.parse('https://api.example.com/api/v1'),
+      client: MockClient((request) async {
+        expect(request.url.path, '/api/v1/backoffice/review-history');
+        expect(request.url.queryParameters['page'], '3');
+        return http.Response(
+          jsonEncode({
+            'data': [],
+            'meta': {
+              'requestId': 'req_history',
+              'page': 3,
+              'totalPages': 3,
+              'totalItems': 42,
+            },
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(api.close);
+
+    final result = await BackofficeRepository(api).listHistory(page: 3);
+
+    expect(result.page, 3);
+    expect(result.totalItems, 42);
+  });
 }
