@@ -24,6 +24,7 @@ class _SubmissionDetailScreenState
     extends ConsumerState<SubmissionDetailScreen> {
   late Future<_SubmissionDetailData> _future;
   String? _downloadingAttachmentId;
+  bool _downloadingPdf = false;
   bool _submitting = false;
   ApiException? _submitFailure;
   @override
@@ -70,6 +71,38 @@ class _SubmissionDetailScreenState
       }
     } finally {
       if (mounted) setState(() => _downloadingAttachmentId = null);
+    }
+  }
+
+  Future<void> _downloadPdf(Submission submission) async {
+    setState(() => _downloadingPdf = true);
+    try {
+      final download = await ref
+          .read(submissionRepositoryProvider)
+          .downloadPdf(submission.id, submission.programNumber);
+      await const DownloadedFileSaver().save(
+        bytes: download.bytes,
+        fileName: download.fileName,
+        contentType: download.contentType,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${download.fileName} berhasil diunduh.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF tidak dapat disimpan.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingPdf = false);
     }
   }
 
@@ -208,12 +241,27 @@ class _SubmissionDetailScreenState
                       SubmissionStatusBadge(status: item.status),
                       const Spacer(),
                       OutlinedButton.icon(
-                        onPressed: null,
-                        icon: const Icon(
-                          Icons.picture_as_pdf_outlined,
-                          size: 17,
+                        onPressed:
+                            item.allowedActions.contains('downloadPdf') &&
+                                !_downloadingPdf &&
+                                _downloadingAttachmentId == null
+                            ? () => _downloadPdf(item)
+                            : null,
+                        icon: _downloadingPdf
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.picture_as_pdf_outlined,
+                                size: 17,
+                              ),
+                        label: Text(
+                          _downloadingPdf ? 'Menyiapkan PDF…' : 'Unduh PDF',
                         ),
-                        label: const Text('Unduh PDF'),
                       ),
                     ],
                   ),
@@ -364,7 +412,9 @@ class _SubmissionDetailScreenState
                           const SizedBox(height: 9),
                           SubmissionAttachmentList(
                             attachments: item.attachments,
-                            onDownload: _downloadAttachment,
+                            onDownload: _downloadingPdf
+                                ? null
+                                : _downloadAttachment,
                             downloadingAttachmentId: _downloadingAttachmentId,
                           ),
                         ],

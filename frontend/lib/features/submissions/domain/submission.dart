@@ -253,8 +253,8 @@ class AttachmentRemovalResult {
   }
 }
 
-class AttachmentDownload {
-  const AttachmentDownload({
+class FileDownload {
+  const FileDownload({
     required this.bytes,
     required this.fileName,
     required this.contentType,

@@ -159,14 +159,14 @@ class SubmissionRepository {
     return AttachmentRemovalResult.fromJson(data);
   }
 
-  Future<AttachmentDownload> downloadAttachment(
+  Future<FileDownload> downloadAttachment(
     String submissionId,
     SubmissionAttachment attachment,
   ) async {
     final response = await _api.getBytes(
       'program-submissions/$submissionId/attachments/${attachment.id}/content',
     );
-    return AttachmentDownload(
+    return FileDownload(
       bytes: response.bytes,
       fileName: _downloadFileName(
         response.headers['content-disposition'],
@@ -184,6 +184,23 @@ class SubmissionRepository {
       ifMatch: '"$version"',
     );
     return Submission.fromJson(data);
+  }
+
+  Future<FileDownload> downloadPdf(
+    String submissionId,
+    String programNumber,
+  ) async {
+    final response = await _api.getBytes(
+      'program-submissions/$submissionId/pdf',
+    );
+    return FileDownload(
+      bytes: response.bytes,
+      fileName: _downloadFileName(
+        response.headers['content-disposition'],
+        '$programNumber.pdf',
+      ),
+      contentType: response.headers['content-type'] ?? 'application/pdf',
+    );
   }
 
   String _downloadFileName(String? disposition, String fallback) {
