@@ -6,11 +6,22 @@ class BackofficeRepository {
 
   final ApiClient _api;
 
-  Future<BackofficeSubmissionPage> listInbox({int page = 1}) async {
+  Future<BackofficeSubmissionPage> listInbox({
+    int page = 1,
+    String? programNumber,
+  }) async {
+    final cleanProgramNumber = programNumber?.trim();
     final response = await _api.request(
       'GET',
       'backoffice/program-submissions',
-      query: {'page': '$page', 'pageSize': '20'},
+      query: {
+        'page': '$page',
+        'pageSize': '20',
+        'programNumber':
+            cleanProgramNumber == null || cleanProgramNumber.isEmpty
+            ? null
+            : cleanProgramNumber,
+      },
     );
     final data = response.data;
     if (data is! List) {

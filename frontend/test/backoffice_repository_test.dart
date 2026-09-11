@@ -58,4 +58,25 @@ void main() {
     expect(result.items.single.owner.fullName, 'Rizky Pratama');
     expect(result.items.single.myActiveTaskIds, ['tsk_checker']);
   });
+
+  test('sends a trimmed exact program number filter', () async {
+    final api = ApiClient(
+      baseUrl: Uri.parse('https://api.example.com/api/v1'),
+      client: MockClient((request) async {
+        expect(request.url.queryParameters['programNumber'], 'PRG-2026-0144');
+        return http.Response(
+          jsonEncode({
+            'data': [],
+            'meta': {'requestId': 'req_filter'},
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(api.close);
+
+    await BackofficeRepository(
+      api,
+    ).listInbox(programNumber: '  PRG-2026-0144  ');
+  });
 }

@@ -18,17 +18,18 @@ class BackofficeSubmissionSummary {
   factory BackofficeSubmissionSummary.fromJson(Map<String, dynamic> json) {
     final owner = json['owner'];
     if (owner is! Map) {
-      throw const FormatException('Backoffice submission is missing its owner.');
+      throw const FormatException(
+        'Backoffice submission is missing its owner.',
+      );
     }
     return BackofficeSubmissionSummary(
       submission: SubmissionSummary.fromJson(json),
       owner: PolicyPerson.fromJson(Map<String, dynamic>.from(owner)),
       currentStage: json['currentStage'] as String?,
       submittedAt: json['submittedAt'] as String?,
-      myActiveTaskIds:
-          (json['myActiveTaskIds'] as List<dynamic>? ?? const [])
-              .whereType<String>()
-              .toList(growable: false),
+      myActiveTaskIds: (json['myActiveTaskIds'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
     );
   }
 }

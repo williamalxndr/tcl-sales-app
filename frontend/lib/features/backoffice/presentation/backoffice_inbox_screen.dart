@@ -16,8 +16,10 @@ class BackofficeInboxScreen extends ConsumerStatefulWidget {
 }
 
 class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
+  final _programNumber = TextEditingController();
   late Future<BackofficeSubmissionPage> _future;
   var _page = 1;
+  String? _appliedProgramNumber;
 
   @override
   void initState() {
@@ -25,8 +27,15 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
     _future = _load();
   }
 
-  Future<BackofficeSubmissionPage> _load() =>
-      ref.read(backofficeRepositoryProvider).listInbox(page: _page);
+  @override
+  void dispose() {
+    _programNumber.dispose();
+    super.dispose();
+  }
+
+  Future<BackofficeSubmissionPage> _load() => ref
+      .read(backofficeRepositoryProvider)
+      .listInbox(page: _page, programNumber: _appliedProgramNumber);
 
   void _reload({bool firstPage = false}) => setState(() {
     if (firstPage) _page = 1;
@@ -39,6 +48,17 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
       _page = page;
       _future = _load();
     });
+  }
+
+  void _applyFilters() {
+    _appliedProgramNumber = _programNumber.text.trim();
+    _reload(firstPage: true);
+  }
+
+  void _resetFilters() {
+    _programNumber.clear();
+    _appliedProgramNumber = null;
+    _reload(firstPage: true);
   }
 
   @override
@@ -61,6 +81,56 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                 style: TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 20),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Filter',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Hanya pengajuan yang sedang menjadi giliran Anda yang ditampilkan.',
+                        style: TextStyle(fontSize: 12, color: AppColors.faint),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 14,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.end,
+                        children: [
+                          SizedBox(
+                            width: 210,
+                            child: TextField(
+                              controller: _programNumber,
+                              onSubmitted: (_) => _applyFilters(),
+                              decoration: const InputDecoration(
+                                labelText: 'No. Program',
+                                hintText: 'PRG-2026-0143',
+                              ),
+                            ),
+                          ),
+                          FilledButton(
+                            onPressed: _applyFilters,
+                            child: const Text('Terapkan Filter'),
+                          ),
+                          OutlinedButton(
+                            onPressed: _resetFilters,
+                            child: const Text('Reset'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Expanded(
                 child: FutureBuilder<BackofficeSubmissionPage>(
                   future: _future,
