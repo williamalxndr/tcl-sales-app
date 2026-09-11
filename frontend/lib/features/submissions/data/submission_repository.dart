@@ -176,6 +176,16 @@ class SubmissionRepository {
     );
   }
 
+  Future<Submission> submitDraft(String submissionId, int version) async {
+    final data = await _api.postObject(
+      'program-submissions/$submissionId/submit',
+      body: const {},
+      idempotencyKey: _newIdempotencyKey('submit'),
+      ifMatch: '"$version"',
+    );
+    return Submission.fromJson(data);
+  }
+
   String _downloadFileName(String? disposition, String fallback) {
     final encoded = RegExp(
       r"filename\*=UTF-8''([^;]+)",

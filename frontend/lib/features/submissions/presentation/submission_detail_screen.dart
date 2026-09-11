@@ -23,6 +23,7 @@ class _SubmissionDetailScreenState
     extends ConsumerState<SubmissionDetailScreen> {
   late Future<_SubmissionDetailData> _future;
   String? _downloadingAttachmentId;
+  bool _submitting = false;
   @override
   void initState() {
     super.initState();
@@ -67,6 +68,88 @@ class _SubmissionDetailScreenState
       }
     } finally {
       if (mounted) setState(() => _downloadingAttachmentId = null);
+    }
+  }
+
+  Future<void> _submit(Submission submission) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Kirim pengajuan?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Pengajuan ${submission.programNumber} akan dikirim ke checker dan tidak dapat diubah selama proses pemeriksaan.',
+              style: const TextStyle(color: AppColors.muted, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7F9FA),
+                border: Border.all(color: const Color(0xFFE9EDF1)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  _SubmitSummaryRow(
+                    label: 'Program',
+                    value: submission.programName ?? 'Belum diisi',
+                    emphasized: true,
+                  ),
+                  _SubmitSummaryRow(
+                    label: 'Lokasi',
+                    value: submission.locations.isEmpty
+                        ? 'Belum dipilih'
+                        : submission.locations.join(', '),
+                  ),
+                  _SubmitSummaryRow(
+                    label: 'Checker',
+                    value:
+                        submission.reviewPlan.checker?.fullName ??
+                        'Belum ditetapkan',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Ya, kirim'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _submitting = true);
+    try {
+      final submitted = await ref
+          .read(submissionRepositoryProvider)
+          .submitDraft(submission.id, submission.version);
+      if (!mounted) return;
+      setState(() {
+        _future = Future.value(_SubmissionDetailData(submission: submitted));
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengajuan berhasil dikirim.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -279,13 +362,39 @@ class _SubmissionDetailScreenState
                     _SubmissionBlockers(issues: item.issues),
                   ],
                   const SizedBox(height: 20),
-                  if (item.allowedActions.contains('update'))
-                    FilledButton.icon(
-                      onPressed: () =>
-                          context.go('/submissions/${item.id}/edit'),
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Lengkapi draft'),
-                    ),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      if (item.allowedActions.contains('update'))
+                        OutlinedButton.icon(
+                          onPressed: _submitting
+                              ? null
+                              : () =>
+                                    context.go('/submissions/${item.id}/edit'),
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('Lengkapi draft'),
+                        ),
+                      if (item.allowedActions.contains('submit'))
+                        FilledButton.icon(
+                          onPressed: _submitting ? null : () => _submit(item),
+                          icon: _submitting
+                              ? const SizedBox(
+                                  width: 17,
+                                  height: 17,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.send_outlined, size: 18),
+                          label: Text(
+                            _submitting ? 'Mengirim…' : 'Kirim pengajuan',
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               );
             },
@@ -300,6 +409,44 @@ class _SubmissionDetailData {
   const _SubmissionDetailData({required this.submission, this.policy});
   final Submission submission;
   final SubmissionPolicy? policy;
+}
+
+class _SubmitSummaryRow extends StatelessWidget {
+  const _SubmitSummaryRow({
+    required this.label,
+    required this.value,
+    this.emphasized = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 82,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: emphasized ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _SubmissionBlockers extends StatelessWidget {
