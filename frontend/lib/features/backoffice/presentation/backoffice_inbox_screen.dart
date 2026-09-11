@@ -239,6 +239,7 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                           SizedBox(
                             width: 210,
                             child: DropdownButtonFormField<String>(
+                              isExpanded: true,
                               initialValue: _selectedStatus,
                               decoration: const InputDecoration(
                                 labelText: 'Status',
@@ -280,6 +281,7 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                             width: 210,
                             child:
                                 DropdownButtonFormField<BackofficePersonField>(
+                                  isExpanded: true,
                                   initialValue: _selectedRole,
                                   decoration: const InputDecoration(
                                     labelText: 'Peran reviewer',
@@ -761,6 +763,7 @@ class _ReviewerPersonFilter extends StatelessWidget {
   Widget build(BuildContext context) {
     if (future == null) {
       return DropdownButtonFormField<String>(
+        isExpanded: true,
         items: const [],
         onChanged: null,
         decoration: const InputDecoration(labelText: 'Orang reviewer'),
@@ -772,6 +775,7 @@ class _ReviewerPersonFilter extends StatelessWidget {
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return DropdownButtonFormField<String>(
+            isExpanded: true,
             items: const [],
             onChanged: null,
             decoration: const InputDecoration(labelText: 'Orang reviewer'),
@@ -781,6 +785,7 @@ class _ReviewerPersonFilter extends StatelessWidget {
           );
         }
         return DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: value,
           decoration: const InputDecoration(labelText: 'Orang reviewer'),
           hint: const Text('Semua orang'),

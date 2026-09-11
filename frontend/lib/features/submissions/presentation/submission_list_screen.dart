@@ -248,8 +248,8 @@ class _SubmissionTable extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 760),
+        child: SizedBox(
+          width: 920,
           child: Column(
             children: [
               const _TableHeader(),
