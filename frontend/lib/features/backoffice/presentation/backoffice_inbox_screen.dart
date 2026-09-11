@@ -20,6 +20,8 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
   late Future<BackofficeSubmissionPage> _future;
   var _page = 1;
   String? _appliedProgramNumber;
+  String? _selectedStatus;
+  String? _appliedStatus;
 
   @override
   void initState() {
@@ -35,7 +37,11 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
 
   Future<BackofficeSubmissionPage> _load() => ref
       .read(backofficeRepositoryProvider)
-      .listInbox(page: _page, programNumber: _appliedProgramNumber);
+      .listInbox(
+        page: _page,
+        programNumber: _appliedProgramNumber,
+        status: _appliedStatus,
+      );
 
   void _reload({bool firstPage = false}) => setState(() {
     if (firstPage) _page = 1;
@@ -52,12 +58,15 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
 
   void _applyFilters() {
     _appliedProgramNumber = _programNumber.text.trim();
+    _appliedStatus = _selectedStatus;
     _reload(firstPage: true);
   }
 
   void _resetFilters() {
     _programNumber.clear();
+    _selectedStatus = null;
     _appliedProgramNumber = null;
+    _appliedStatus = null;
     _reload(firstPage: true);
   }
 
@@ -114,6 +123,44 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                                 labelText: 'No. Program',
                                 hintText: 'PRG-2026-0143',
                               ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 210,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _selectedStatus,
+                              decoration: const InputDecoration(
+                                labelText: 'Status',
+                              ),
+                              hint: const Text('Semua status'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'pendingChecker',
+                                  child: Text('Menunggu Checker'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'pendingAcknowledgement',
+                                  child: Text('Menunggu Mengetahui'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'pendingApproval',
+                                  child: Text('Menunggu Persetujuan'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'approved',
+                                  child: Text('Disetujui'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'rejected',
+                                  child: Text('Ditolak'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'cancelled',
+                                  child: Text('Dibatalkan'),
+                                ),
+                              ],
+                              onChanged: (value) =>
+                                  setState(() => _selectedStatus = value),
                             ),
                           ),
                           FilledButton(

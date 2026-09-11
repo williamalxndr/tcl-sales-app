@@ -9,6 +9,7 @@ class BackofficeRepository {
   Future<BackofficeSubmissionPage> listInbox({
     int page = 1,
     String? programNumber,
+    String? status,
   }) async {
     final cleanProgramNumber = programNumber?.trim();
     final response = await _api.request(
@@ -21,6 +22,7 @@ class BackofficeRepository {
             cleanProgramNumber == null || cleanProgramNumber.isEmpty
             ? null
             : cleanProgramNumber,
+        'status': status,
       },
     );
     final data = response.data;

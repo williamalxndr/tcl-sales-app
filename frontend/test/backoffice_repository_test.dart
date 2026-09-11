@@ -79,4 +79,23 @@ void main() {
       api,
     ).listInbox(programNumber: '  PRG-2026-0144  ');
   });
+
+  test('sends the selected status filter to the inbox endpoint', () async {
+    final api = ApiClient(
+      baseUrl: Uri.parse('https://api.example.com/api/v1'),
+      client: MockClient((request) async {
+        expect(request.url.queryParameters['status'], 'pendingApproval');
+        return http.Response(
+          jsonEncode({
+            'data': [],
+            'meta': {'requestId': 'req_status'},
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(api.close);
+
+    await BackofficeRepository(api).listInbox(status: 'pendingApproval');
+  });
 }
