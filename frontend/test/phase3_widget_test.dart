@@ -191,6 +191,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Tolak pengajuan'), findsOneWidget);
   });
+
+  for (final viewport in const {
+    'mobile': Size(390, 844),
+    'tablet': Size(768, 1024),
+    'desktop': Size(1440, 1000),
+  }.entries) {
+    testWidgets('${viewport.key} layouts render without overflow', (
+      tester,
+    ) async {
+      _setViewport(tester, viewport.value);
+      final api = _api((request) {
+        final path = request.url.path;
+        if (path.endsWith('/policy')) {
+          return _json({'data': _policy(), 'meta': _meta()});
+        }
+        if (path == '/api/v1/backoffice/program-submissions/sub_1') {
+          return _json({
+            'data': _submission(
+              backoffice: true,
+              status: 'pendingChecker',
+              actions: const ['approve', 'reject', 'downloadPdf'],
+            ),
+            'meta': _meta(),
+          });
+        }
+        if (path == '/api/v1/backoffice/program-submissions') {
+          return _json({
+            'data': [
+              _submission(
+                summary: true,
+                backoffice: true,
+                status: 'pendingChecker',
+              ),
+            ],
+            'meta': _meta(totalItems: 1),
+          });
+        }
+        if (path == '/api/v1/program-submissions/sub_1') {
+          return _json({
+            'data': _submission(actions: const ['submit', 'downloadPdf']),
+            'meta': _meta(),
+          });
+        }
+        return _json({
+          'data': [_submission(summary: true)],
+          'meta': _meta(totalItems: 1),
+        });
+      });
+      addTearDown(api.close);
+
+      for (final screen in const <Widget>[
+        SubmissionListScreen(),
+        SubmissionDetailScreen(submissionId: 'sub_1'),
+        BackofficeInboxScreen(),
+        BackofficeDetailScreen(submissionId: 'sub_1'),
+      ]) {
+        await _pump(tester, api, screen);
+        if (screen is BackofficeInboxScreen) {
+          final filterCard = find
+              .ancestor(of: find.text('Filter'), matching: find.byType(Card))
+              .first;
+          expect(tester.getSize(filterCard).height, lessThan(260));
+        }
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${screen.runtimeType} overflowed at ${viewport.value}',
+        );
+      }
+    });
+  }
 }
 
 Finder _listScrollable() => find
@@ -198,7 +269,11 @@ Finder _listScrollable() => find
     .first;
 
 void _desktop(WidgetTester tester) {
-  tester.view.physicalSize = const Size(1280, 900);
+  _setViewport(tester, const Size(1280, 900));
+}
+
+void _setViewport(WidgetTester tester, Size size) {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);

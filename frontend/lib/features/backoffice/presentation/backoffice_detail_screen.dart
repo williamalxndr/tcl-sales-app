@@ -326,33 +326,58 @@ class _DetailDocument extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    OutlinedButton.icon(
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final backButton = OutlinedButton.icon(
                       onPressed: context.pop,
                       icon: const Icon(Icons.arrow_back, size: 17),
                       label: const Text('Kembali ke daftar'),
-                    ),
-                    const Spacer(),
-                    OutlinedButton.icon(
-                      onPressed:
-                          item.allowedActions.contains('downloadPdf') &&
-                              !downloadingPdf &&
-                              downloadingAttachmentId == null
-                          ? () => onDownloadPdf(item)
-                          : null,
-                      icon: downloadingPdf
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.picture_as_pdf_outlined, size: 17),
-                      label: Text(downloadingPdf ? 'Menyiapkan…' : 'Unduh PDF'),
-                    ),
-                    const SizedBox(width: 10),
-                    SubmissionStatusBadge(status: item.status),
-                  ],
+                    );
+                    final documentActions = Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed:
+                              item.allowedActions.contains('downloadPdf') &&
+                                  !downloadingPdf &&
+                                  downloadingAttachmentId == null
+                              ? () => onDownloadPdf(item)
+                              : null,
+                          icon: downloadingPdf
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.picture_as_pdf_outlined,
+                                  size: 17,
+                                ),
+                          label: Text(
+                            downloadingPdf ? 'Menyiapkan…' : 'Unduh PDF',
+                          ),
+                        ),
+                        SubmissionStatusBadge(status: item.status),
+                      ],
+                    );
+                    if (constraints.maxWidth < 620) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          backButton,
+                          const SizedBox(height: 10),
+                          documentActions,
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [backButton, const Spacer(), documentActions],
+                    );
+                  },
                 ),
                 const SizedBox(height: 16),
                 Card(
@@ -453,52 +478,71 @@ class _DetailDocument extends StatelessWidget {
                         horizontal: 18,
                         vertical: 15,
                       ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Tindakan Anda sebagai ${_activeRole(item)}',
-                              style: const TextStyle(color: AppColors.muted),
-                            ),
-                          ),
-                          if (item.allowedActions.contains('approve'))
-                            FilledButton.icon(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF2F6B48),
-                              ),
-                              onPressed: deciding
-                                  ? null
-                                  : () => onApprove(detail),
-                              icon: deciding
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(Icons.check, size: 18),
-                              label: Text(deciding ? 'Memproses…' : 'Approve'),
-                            ),
-                          if (item.allowedActions.contains('approve') &&
-                              item.allowedActions.contains('reject'))
-                            const SizedBox(width: 9),
-                          if (item.allowedActions.contains('reject'))
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF9C4030),
-                                side: const BorderSide(
-                                  color: Color(0xFF9C4030),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final label = Text(
+                            'Tindakan Anda sebagai ${_activeRole(item)}',
+                            style: const TextStyle(color: AppColors.muted),
+                          );
+                          final actions = Wrap(
+                            spacing: 9,
+                            runSpacing: 9,
+                            children: [
+                              if (item.allowedActions.contains('approve'))
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2F6B48),
+                                  ),
+                                  onPressed: deciding
+                                      ? null
+                                      : () => onApprove(detail),
+                                  icon: deciding
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(Icons.check, size: 18),
+                                  label: Text(
+                                    deciding ? 'Memproses…' : 'Approve',
+                                  ),
                                 ),
-                              ),
-                              onPressed: deciding
-                                  ? null
-                                  : () => onReject(detail),
-                              icon: const Icon(Icons.close, size: 18),
-                              label: const Text('Not Approved'),
-                            ),
-                        ],
+                              if (item.allowedActions.contains('reject'))
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF9C4030),
+                                    side: const BorderSide(
+                                      color: Color(0xFF9C4030),
+                                    ),
+                                  ),
+                                  onPressed: deciding
+                                      ? null
+                                      : () => onReject(detail),
+                                  icon: const Icon(Icons.close, size: 18),
+                                  label: const Text('Not Approved'),
+                                ),
+                            ],
+                          );
+                          if (constraints.maxWidth < 560) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                label,
+                                const SizedBox(height: 12),
+                                actions,
+                              ],
+                            );
+                          }
+                          return Row(
+                            children: [
+                              Expanded(child: label),
+                              actions,
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),

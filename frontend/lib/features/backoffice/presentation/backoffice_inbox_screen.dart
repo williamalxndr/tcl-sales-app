@@ -153,40 +153,10 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.history ? 'Riwayat Review' : 'Backoffice',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(
-                        value: false,
-                        icon: Icon(Icons.inbox_outlined),
-                        label: Text('Inbox'),
-                      ),
-                      ButtonSegment(
-                        value: true,
-                        icon: Icon(Icons.history),
-                        label: Text('Riwayat'),
-                      ),
-                    ],
-                    selected: {widget.history},
-                    onSelectionChanged: (selection) {
-                      context.go(
-                        selection.single
-                            ? '/backoffice/history'
-                            : '/backoffice',
-                      );
-                    },
-                  ),
-                ],
+              _InboxPageHeader(
+                history: widget.history,
+                onHistoryChanged: (history) =>
+                    context.go(history ? '/backoffice/history' : '/backoffice'),
               ),
               const SizedBox(height: 3),
               Text(
@@ -220,173 +190,177 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      Wrap(
-                        spacing: 14,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.end,
-                        children: [
-                          SizedBox(
-                            width: 210,
-                            child: TextField(
-                              controller: _programNumber,
-                              onSubmitted: (_) => _applyFilters(),
-                              decoration: const InputDecoration(
-                                labelText: 'No. Program',
-                                hintText: 'PRG-2026-0143',
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          spacing: 14,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            SizedBox(
+                              width: 210,
+                              child: TextField(
+                                controller: _programNumber,
+                                onSubmitted: (_) => _applyFilters(),
+                                decoration: const InputDecoration(
+                                  labelText: 'No. Program',
+                                  hintText: 'PRG-2026-0143',
+                                ),
                               ),
                             ),
-                          ),
-                          SizedBox(
-                            width: 210,
-                            child: DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              initialValue: _selectedStatus,
-                              decoration: const InputDecoration(
-                                labelText: 'Status',
-                              ),
-                              hint: const Text('Semua status'),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'pendingChecker',
-                                  child: Text('Menunggu Checker'),
+                            SizedBox(
+                              width: 210,
+                              child: DropdownButtonFormField<String>(
+                                isExpanded: true,
+                                initialValue: _selectedStatus,
+                                decoration: const InputDecoration(
+                                  labelText: 'Status',
                                 ),
-                                DropdownMenuItem(
-                                  value: 'pendingAcknowledgement',
-                                  child: Text('Menunggu Mengetahui'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'pendingApproval',
-                                  child: Text('Menunggu Persetujuan'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'approved',
-                                  child: Text('Disetujui'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'rejected',
-                                  child: Text('Ditolak'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'cancelled',
-                                  child: Text('Dibatalkan'),
-                                ),
-                              ],
-                              onChanged: (value) => setState(() {
-                                _selectedStatus = value;
-                                if (value != null) _selectedRole = null;
-                              }),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 210,
-                            child:
-                                DropdownButtonFormField<BackofficePersonField>(
-                                  isExpanded: true,
-                                  initialValue: _selectedRole,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Peran reviewer',
+                                hint: const Text('Semua status'),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'pendingChecker',
+                                    child: Text('Menunggu Checker'),
                                   ),
-                                  hint: const Text('Semua peran'),
-                                  items: BackofficePersonField.values
-                                      .where(
-                                        (field) =>
-                                            field !=
-                                            BackofficePersonField.owner,
-                                      )
-                                      .map(
-                                        (role) => DropdownMenuItem(
-                                          value: role,
-                                          child: Text(role.label),
-                                        ),
-                                      )
-                                      .toList(growable: false),
-                                  onChanged: (value) => setState(() {
-                                    _selectedRole = value;
-                                    _selectedReviewerId = null;
-                                    _peopleFuture = value == null
-                                        ? null
-                                        : ref
-                                              .read(
-                                                backofficeRepositoryProvider,
-                                              )
-                                              .listFilterPeople(
-                                                field: value,
-                                                scope: widget.history
-                                                    ? 'history'
-                                                    : 'inbox',
-                                              );
-                                    if (value != null) _selectedStatus = null;
-                                  }),
-                                ),
-                          ),
-                          SizedBox(
-                            width: 230,
-                            child: _ReviewerPersonFilter(
-                              key: ValueKey(_selectedRole),
-                              future: _peopleFuture,
-                              value: _selectedReviewerId,
-                              onChanged: (value) =>
-                                  setState(() => _selectedReviewerId = value),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 210,
-                            child: InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: 'Periode pelaksanaan',
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: InkWell(
-                                      onTap: () => _pickDate(from: true),
-                                      child: Text(
-                                        _dateFrom == null
-                                            ? 'Dari'
-                                            : _apiDate(_dateFrom)!,
-                                        style: TextStyle(
-                                          color: _dateFrom == null
-                                              ? AppColors.faint
-                                              : AppColors.ink,
-                                        ),
-                                      ),
-                                    ),
+                                  DropdownMenuItem(
+                                    value: 'pendingAcknowledgement',
+                                    child: Text('Menunggu Mengetahui'),
                                   ),
-                                  const Text('—'),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: InkWell(
-                                      onTap: () => _pickDate(from: false),
-                                      child: Text(
-                                        _dateTo == null
-                                            ? 'Sampai'
-                                            : _apiDate(_dateTo)!,
-                                        style: TextStyle(
-                                          color: _dateTo == null
-                                              ? AppColors.faint
-                                              : AppColors.ink,
-                                        ),
-                                      ),
-                                    ),
+                                  DropdownMenuItem(
+                                    value: 'pendingApproval',
+                                    child: Text('Menunggu Persetujuan'),
                                   ),
-                                  const Icon(
-                                    Icons.calendar_today_outlined,
-                                    size: 15,
-                                    color: AppColors.faint,
+                                  DropdownMenuItem(
+                                    value: 'approved',
+                                    child: Text('Disetujui'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'rejected',
+                                    child: Text('Ditolak'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'cancelled',
+                                    child: Text('Dibatalkan'),
                                   ),
                                 ],
+                                onChanged: (value) => setState(() {
+                                  _selectedStatus = value;
+                                  if (value != null) _selectedRole = null;
+                                }),
                               ),
                             ),
-                          ),
-                          FilledButton(
-                            onPressed: _applyFilters,
-                            child: const Text('Terapkan Filter'),
-                          ),
-                          OutlinedButton(
-                            onPressed: _resetFilters,
-                            child: const Text('Reset'),
-                          ),
-                        ],
+                            SizedBox(
+                              width: 210,
+                              child:
+                                  DropdownButtonFormField<
+                                    BackofficePersonField
+                                  >(
+                                    isExpanded: true,
+                                    initialValue: _selectedRole,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Peran reviewer',
+                                    ),
+                                    hint: const Text('Semua peran'),
+                                    items: BackofficePersonField.values
+                                        .where(
+                                          (field) =>
+                                              field !=
+                                              BackofficePersonField.owner,
+                                        )
+                                        .map(
+                                          (role) => DropdownMenuItem(
+                                            value: role,
+                                            child: Text(role.label),
+                                          ),
+                                        )
+                                        .toList(growable: false),
+                                    onChanged: (value) => setState(() {
+                                      _selectedRole = value;
+                                      _selectedReviewerId = null;
+                                      _peopleFuture = value == null
+                                          ? null
+                                          : ref
+                                                .read(
+                                                  backofficeRepositoryProvider,
+                                                )
+                                                .listFilterPeople(
+                                                  field: value,
+                                                  scope: widget.history
+                                                      ? 'history'
+                                                      : 'inbox',
+                                                );
+                                      if (value != null) _selectedStatus = null;
+                                    }),
+                                  ),
+                            ),
+                            SizedBox(
+                              width: 230,
+                              child: _ReviewerPersonFilter(
+                                key: ValueKey(_selectedRole),
+                                future: _peopleFuture,
+                                value: _selectedReviewerId,
+                                onChanged: (value) =>
+                                    setState(() => _selectedReviewerId = value),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 210,
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Periode pelaksanaan',
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: () => _pickDate(from: true),
+                                        child: Text(
+                                          _dateFrom == null
+                                              ? 'Dari'
+                                              : _apiDate(_dateFrom)!,
+                                          style: TextStyle(
+                                            color: _dateFrom == null
+                                                ? AppColors.faint
+                                                : AppColors.ink,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const Text('—'),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: () => _pickDate(from: false),
+                                        child: Text(
+                                          _dateTo == null
+                                              ? 'Sampai'
+                                              : _apiDate(_dateTo)!,
+                                          style: TextStyle(
+                                            color: _dateTo == null
+                                                ? AppColors.faint
+                                                : AppColors.ink,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const Icon(
+                                      Icons.calendar_today_outlined,
+                                      size: 15,
+                                      color: AppColors.faint,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            FilledButton(
+                              onPressed: _applyFilters,
+                              child: const Text('Terapkan Filter'),
+                            ),
+                            OutlinedButton(
+                              onPressed: _resetFilters,
+                              child: const Text('Reset'),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -470,7 +444,10 @@ class _InboxTable extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-          child: Row(
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 3,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 history ? 'Riwayat reviewer' : 'Inbox reviewer',
@@ -479,7 +456,6 @@ class _InboxTable extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(width: 10),
               Text(
                 '${items.length} ditampilkan',
                 style: const TextStyle(fontSize: 12, color: AppColors.faint),
@@ -518,6 +494,52 @@ class _InboxTable extends StatelessWidget {
       ],
     ),
   );
+}
+
+class _InboxPageHeader extends StatelessWidget {
+  const _InboxPageHeader({
+    required this.history,
+    required this.onHistoryChanged,
+  });
+
+  final bool history;
+  final ValueChanged<bool> onHistoryChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = Text(
+      history ? 'Riwayat Review' : 'Backoffice',
+      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+    );
+    final navigation = SegmentedButton<bool>(
+      segments: const [
+        ButtonSegment(
+          value: false,
+          icon: Icon(Icons.inbox_outlined),
+          label: Text('Inbox'),
+        ),
+        ButtonSegment(
+          value: true,
+          icon: Icon(Icons.history),
+          label: Text('Riwayat'),
+        ),
+      ],
+      selected: {history},
+      onSelectionChanged: (selection) => onHistoryChanged(selection.single),
+    );
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [title, const SizedBox(height: 10), navigation],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(child: title),
+        navigation,
+      ],
+    );
+  }
 }
 
 const _columns = <int>[120, 280, 120, 130, 170, 130, 130, 100];
@@ -707,27 +729,50 @@ class _InboxPagination extends StatelessWidget {
   final ValueChanged<int> onPageSelected;
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Expanded(
-        child: Text(
-          '$totalItems pengajuan · Halaman $page dari $totalPages',
-          style: const TextStyle(fontSize: 12, color: AppColors.faint),
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            compact
+                ? '$totalItems pengajuan · $page/$totalPages'
+                : '$totalItems pengajuan · Halaman $page dari $totalPages',
+            style: const TextStyle(fontSize: 12, color: AppColors.faint),
+          ),
         ),
-      ),
-      OutlinedButton.icon(
-        onPressed: page > 1 ? () => onPageSelected(page - 1) : null,
-        icon: const Icon(Icons.chevron_left, size: 18),
-        label: const Text('Sebelumnya'),
-      ),
-      const SizedBox(width: 8),
-      OutlinedButton.icon(
-        onPressed: page < totalPages ? () => onPageSelected(page + 1) : null,
-        icon: const Icon(Icons.chevron_right, size: 18),
-        label: const Text('Berikutnya'),
-      ),
-    ],
-  );
+        if (compact) ...[
+          IconButton.outlined(
+            tooltip: 'Halaman sebelumnya',
+            onPressed: page > 1 ? () => onPageSelected(page - 1) : null,
+            icon: const Icon(Icons.chevron_left, size: 18),
+          ),
+          const SizedBox(width: 6),
+          IconButton.outlined(
+            tooltip: 'Halaman berikutnya',
+            onPressed: page < totalPages
+                ? () => onPageSelected(page + 1)
+                : null,
+            icon: const Icon(Icons.chevron_right, size: 18),
+          ),
+        ] else ...[
+          OutlinedButton.icon(
+            onPressed: page > 1 ? () => onPageSelected(page - 1) : null,
+            icon: const Icon(Icons.chevron_left, size: 18),
+            label: const Text('Sebelumnya'),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: page < totalPages
+                ? () => onPageSelected(page + 1)
+                : null,
+            icon: const Icon(Icons.chevron_right, size: 18),
+            label: const Text('Berikutnya'),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 String _stageLabel(String? stage) => switch (stage) {
