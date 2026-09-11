@@ -129,6 +129,7 @@ class _SubmissionListScreenState extends ConsumerState<SubmissionListScreen> {
                     controller: _search,
                     onSubmitted: (_) => _reload(),
                     decoration: InputDecoration(
+                      labelText: 'Cari pengajuan',
                       hintText: 'Cari nomor atau nama program',
                       prefixIcon: const Icon(Icons.search),
                       suffixIcon: IconButton(
@@ -314,80 +315,91 @@ class _TableRow extends StatelessWidget {
   const _TableRow({required this.item});
   final SubmissionSummary item;
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: () => context.go('/submissions/${item.id}'),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 130,
-            child: Text(
-              item.programNumber,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF6F7981),
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 19,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.programName ?? 'Pengajuan belum diberi nama',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.navy,
-                  ),
-                ),
-                Text(
-                  item.periodLabel,
+  Widget build(BuildContext context) {
+    final name = item.programName ?? 'Belum diberi nama';
+    final status = SubmissionStatusVisual.from(item.status).label;
+    return Semantics(
+      button: true,
+      label: 'Buka detail pengajuan ${item.programNumber}, $name, $status',
+      child: InkWell(
+        onTap: () => context.go('/submissions/${item.id}'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 130,
+                child: Text(
+                  item.programNumber,
                   style: const TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF8B929A),
+                    color: Color(0xFF6F7981),
+                    fontFamily: 'monospace',
                   ),
                 ),
-              ],
-            ),
+              ),
+              Expanded(
+                flex: 19,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.navy,
+                      ),
+                    ),
+                    Text(
+                      item.periodLabel,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF8B929A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 9,
+                child: Text(
+                  item.programType ?? '—',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+              ),
+              Expanded(
+                flex: 11,
+                child: Text(
+                  item.locations.isEmpty ? '—' : item.locations.join(', '),
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+              ),
+              SizedBox(
+                width: 110,
+                child: Text(
+                  item.estimatedCost == null ? '—' : 'Rp ${item.estimatedCost}',
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                ),
+              ),
+              SizedBox(
+                width: 160,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: SubmissionStatusBadge(
+                    status: item.status,
+                    compact: true,
+                  ),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            flex: 9,
-            child: Text(
-              item.programType ?? '—',
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppColors.muted),
-            ),
-          ),
-          Expanded(
-            flex: 11,
-            child: Text(
-              item.locations.isEmpty ? '—' : item.locations.join(', '),
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppColors.muted),
-            ),
-          ),
-          SizedBox(
-            width: 110,
-            child: Text(
-              item.estimatedCost == null ? '—' : 'Rp ${item.estimatedCost}',
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-            ),
-          ),
-          SizedBox(
-            width: 160,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: SubmissionStatusBadge(status: item.status, compact: true),
-            ),
-          ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

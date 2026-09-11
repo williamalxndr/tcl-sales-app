@@ -35,6 +35,12 @@ void main() {
     expect(find.text('Pengajuan Saya'), findsOneWidget);
     expect(find.text('Program September'), findsOneWidget);
     expect(find.text('PRG-2026-0001'), findsOneWidget);
+    expect(
+      _semanticsLabel(
+        'Buka detail pengajuan PRG-2026-0001, Program September, Draft',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('editor renders API data and opens the upload picker', (
@@ -190,6 +196,13 @@ void main() {
     expect(find.text('Inbox reviewer'), findsOneWidget);
     expect(find.text('Program September'), findsOneWidget);
     expect(find.text('Checker'), findsOneWidget);
+    expect(
+      _semanticsLabel(
+        'Buka detail pengajuan PRG-2026-0001, Program September, '
+        'oleh Rizky Pratama, Menunggu Checker',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('backoffice detail opens approve and reject dialogs', (
@@ -218,6 +231,10 @@ void main() {
     await tester.tap(approve);
     await tester.pumpAndSettle();
     expect(find.text('Setujui pengajuan'), findsOneWidget);
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
+    );
     await tester.tap(find.text('Batal'));
     await tester.pumpAndSettle();
 
@@ -423,6 +440,10 @@ Map<String, dynamic> _submission({
   }
   return data;
 }
+
+Finder _semanticsLabel(String label) => find.byWidgetPredicate(
+  (widget) => widget is Semantics && widget.properties.label == label,
+);
 
 class _CancelingFilePicker extends FilePicker {
   int calls = 0;

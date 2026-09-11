@@ -16,23 +16,27 @@ class SubmissionStatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final visual = SubmissionStatusVisual.from(status);
     return Semantics(
+      container: true,
       label: 'Status pengajuan: ${visual.label}',
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: visual.background,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 9 : 11,
-            vertical: compact ? 4 : 4,
+      child: ExcludeSemantics(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: visual.background,
+            border: Border.all(color: visual.foreground.withValues(alpha: .2)),
+            borderRadius: BorderRadius.circular(20),
           ),
-          child: Text(
-            visual.label,
-            style: TextStyle(
-              fontSize: compact ? 11.5 : 12,
-              fontWeight: FontWeight.w600,
-              color: visual.foreground,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 9 : 11,
+              vertical: 4,
+            ),
+            child: Text(
+              visual.label,
+              style: TextStyle(
+                fontSize: compact ? 11.5 : 12,
+                fontWeight: FontWeight.w600,
+                color: visual.foreground,
+              ),
             ),
           ),
         ),

@@ -108,7 +108,7 @@ class _BackofficeDetailScreenState
   Future<void> _approve(BackofficeSubmissionDetail detail) async {
     final taskId = detail.submission.myActiveTaskIds.firstOrNull;
     if (taskId == null) return;
-    final note = TextEditingController();
+    var decisionNote = '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -127,7 +127,7 @@ class _BackofficeDetailScreenState
               ),
               const SizedBox(height: 16),
               TextField(
-                controller: note,
+                autofocus: true,
                 minLines: 3,
                 maxLines: 5,
                 maxLength: 2000,
@@ -136,6 +136,7 @@ class _BackofficeDetailScreenState
                   hintText: 'Tambahkan catatan persetujuan',
                   alignLabelWithHint: true,
                 ),
+                onChanged: (value) => decisionNote = value,
               ),
             ],
           ),
@@ -155,8 +156,6 @@ class _BackofficeDetailScreenState
         ),
       ),
     );
-    final decisionNote = note.text;
-    note.dispose();
     if (confirmed != true || !mounted) return;
 
     setState(() => _deciding = true);
@@ -188,7 +187,7 @@ class _BackofficeDetailScreenState
   Future<void> _reject(BackofficeSubmissionDetail detail) async {
     final taskId = detail.submission.myActiveTaskIds.firstOrNull;
     if (taskId == null) return;
-    final note = TextEditingController();
+    var decisionNote = '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -206,7 +205,6 @@ class _BackofficeDetailScreenState
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: note,
               autofocus: true,
               minLines: 3,
               maxLines: 5,
@@ -216,6 +214,7 @@ class _BackofficeDetailScreenState
                 hintText: 'Tambahkan alasan atau catatan penolakan',
                 alignLabelWithHint: true,
               ),
+              onChanged: (value) => decisionNote = value,
             ),
           ],
         ),
@@ -234,8 +233,6 @@ class _BackofficeDetailScreenState
         ],
       ),
     );
-    final decisionNote = note.text;
-    note.dispose();
     if (confirmed != true || !mounted) return;
 
     setState(() => _deciding = true);

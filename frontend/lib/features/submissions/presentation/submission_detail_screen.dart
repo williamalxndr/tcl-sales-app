@@ -196,7 +196,7 @@ class _SubmissionDetailScreenState
   }
 
   Future<void> _cancel(Submission submission) async {
-    final reason = TextEditingController();
+    var reason = '';
     final confirmedReason = await showDialog<String>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -212,7 +212,6 @@ class _SubmissionDetailScreenState
               ),
               const SizedBox(height: 16),
               TextField(
-                controller: reason,
                 autofocus: true,
                 minLines: 3,
                 maxLines: 5,
@@ -223,7 +222,7 @@ class _SubmissionDetailScreenState
                   hintText: 'Jelaskan alasan pengajuan dibatalkan',
                   alignLabelWithHint: true,
                 ),
-                onChanged: (_) => setDialogState(() {}),
+                onChanged: (value) => setDialogState(() => reason = value),
               ),
             ],
           ),
@@ -236,16 +235,15 @@ class _SubmissionDetailScreenState
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF9C4030),
               ),
-              onPressed: reason.text.trim().isEmpty
+              onPressed: reason.trim().isEmpty
                   ? null
-                  : () => Navigator.of(dialogContext).pop(reason.text.trim()),
+                  : () => Navigator.of(dialogContext).pop(reason.trim()),
               child: const Text('Batalkan pengajuan'),
             ),
           ],
         ),
       ),
     );
-    reason.dispose();
     if (confirmedReason == null || !mounted) return;
 
     setState(() {

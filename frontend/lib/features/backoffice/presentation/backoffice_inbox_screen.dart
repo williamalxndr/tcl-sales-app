@@ -580,98 +580,106 @@ class _InboxRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final submission = item.submission;
-    return InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        height: 68,
-        child: Row(
-          children: [
-            _Cell(
-              width: _columns[0].toDouble(),
-              child: Text(
-                submission.programNumber,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.muted,
-                  fontFamily: 'monospace',
+    final name = submission.programName ?? 'Belum diberi nama';
+    final status = SubmissionStatusVisual.from(submission.status).label;
+    return Semantics(
+      button: true,
+      label:
+          'Buka detail pengajuan ${submission.programNumber}, $name, '
+          'oleh ${item.owner.fullName}, $status',
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 68,
+          child: Row(
+            children: [
+              _Cell(
+                width: _columns[0].toDouble(),
+                child: Text(
+                  submission.programNumber,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.muted,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
-            ),
-            _Cell(
-              width: _columns[1].toDouble(),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    submission.programName ?? 'Nama program belum tersedia',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.navy,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    submission.periodLabel,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.faint,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _Cell(
-              width: _columns[2].toDouble(),
-              child: Text(submission.programType ?? '—'),
-            ),
-            _Cell(
-              width: _columns[3].toDouble(),
-              child: Text(submission.locations.join(', ')),
-            ),
-            _Cell(
-              width: _columns[4].toDouble(),
-              child: Text(item.owner.fullName),
-            ),
-            _Cell(
-              width: _columns[5].toDouble(),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Text(_costLabel(submission.estimatedCost)),
-              ),
-            ),
-            _Cell(
-              width: _columns[6].toDouble(),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEEF3F6),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 4,
-                    ),
-                    child: Text(
-                      history ? 'Selesai' : _stageLabel(item.currentStage),
+              _Cell(
+                width: _columns[1].toDouble(),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 11.5,
                         color: AppColors.navy,
                         fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      submission.periodLabel,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.faint,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _Cell(
+                width: _columns[2].toDouble(),
+                child: Text(submission.programType ?? '—'),
+              ),
+              _Cell(
+                width: _columns[3].toDouble(),
+                child: Text(submission.locations.join(', ')),
+              ),
+              _Cell(
+                width: _columns[4].toDouble(),
+                child: Text(item.owner.fullName),
+              ),
+              _Cell(
+                width: _columns[5].toDouble(),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(_costLabel(submission.estimatedCost)),
+                ),
+              ),
+              _Cell(
+                width: _columns[6].toDouble(),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF3F6),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      child: Text(
+                        history ? 'Selesai' : _stageLabel(item.currentStage),
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: AppColors.navy,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            _Cell(
-              width: _columns[7].toDouble(),
-              child: SubmissionStatusBadge(status: submission.status),
-            ),
-          ],
+              _Cell(
+                width: _columns[7].toDouble(),
+                child: SubmissionStatusBadge(status: submission.status),
+              ),
+            ],
+          ),
         ),
       ),
     );

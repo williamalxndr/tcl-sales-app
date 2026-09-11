@@ -19,6 +19,7 @@ ThemeData buildAppTheme() {
   );
   return ThemeData(
     useMaterial3: true,
+    focusColor: const Color(0x331F5876),
     scaffoldBackgroundColor: AppColors.canvas,
     colorScheme: const ColorScheme.light(
       primary: AppColors.navy,
@@ -88,6 +89,12 @@ ThemeData buildAppTheme() {
         side: const BorderSide(color: AppColors.inputLine),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
         textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        focusColor: const Color(0x331F5876),
+        minimumSize: const Size(44, 44),
       ),
     ),
   );
