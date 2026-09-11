@@ -124,10 +124,20 @@ class _ReviewTaskRow extends StatelessWidget {
                 ),
                 if (task.note case final String note when note.isNotEmpty)
                   Text(
-                    note,
+                    '“$note”',
                     style: const TextStyle(
                       fontSize: 11.5,
                       color: AppColors.muted,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                if (task.decidedAt case final String decidedAt
+                    when decidedAt.isNotEmpty)
+                  Text(
+                    _decisionTime(decidedAt),
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AppColors.faint,
                     ),
                   ),
               ],
@@ -146,6 +156,14 @@ class _ReviewTaskRow extends StatelessWidget {
       ),
     );
   }
+}
+
+String _decisionTime(String value) {
+  final date = DateTime.tryParse(value)?.toLocal();
+  if (date == null) return value;
+  String two(int number) => number.toString().padLeft(2, '0');
+  return '${two(date.day)}/${two(date.month)}/${date.year} '
+      '${two(date.hour)}:${two(date.minute)}';
 }
 
 class _OutcomeVisual {

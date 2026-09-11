@@ -7,6 +7,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../submissions/domain/submission.dart';
 import '../../submissions/presentation/submission_status_badge.dart';
+import '../../submissions/presentation/submission_review_progress.dart';
 import '../domain/backoffice_submission.dart';
 
 class BackofficeDetailScreen extends ConsumerStatefulWidget {
@@ -148,6 +149,15 @@ class _DetailDocument extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (item.reviewTasks.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Alur pemeriksaan',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  SubmissionReviewProgress(submission: item),
+                ],
               ],
             ),
           ),
