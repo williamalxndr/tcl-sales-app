@@ -6,6 +6,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/platform/downloaded_file_saver.dart';
 import '../../../core/ui/app_theme.dart';
+import '../../../core/ui/async_state_panel.dart';
 import '../../submissions/domain/submission.dart';
 import '../../submissions/presentation/submission_status_badge.dart';
 import '../../submissions/presentation/submission_review_progress.dart';
@@ -268,10 +269,14 @@ class _BackofficeDetailScreenState
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
+          return const AppLoadingState(message: 'Memuat detail Backoffice…');
         }
         if (snapshot.hasError) {
-          return _DetailError(error: snapshot.error, onRetry: _reload);
+          return AppErrorState(
+            error: snapshot.error,
+            fallbackMessage: 'Detail pengajuan tidak dapat dimuat.',
+            onRetry: _reload,
+          );
         }
         return _DetailDocument(
           detail: snapshot.requireData,
@@ -624,30 +629,6 @@ class _AttachmentMetadata extends StatelessWidget {
               : const Icon(Icons.download_outlined, size: 17),
           label: Text(downloading ? 'Mengunduh…' : 'Unduh'),
         ),
-      ],
-    ),
-  );
-}
-
-class _DetailError extends StatelessWidget {
-  const _DetailError({required this.error, required this.onRetry});
-
-  final Object? error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          error is ApiException
-              ? (error as ApiException).message
-              : 'Detail pengajuan tidak dapat dimuat.',
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 10),
-        FilledButton(onPressed: onRetry, child: const Text('Coba lagi')),
       ],
     ),
   );

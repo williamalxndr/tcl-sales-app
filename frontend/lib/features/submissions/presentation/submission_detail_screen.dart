@@ -7,6 +7,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/platform/downloaded_file_saver.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
+import '../../../core/ui/async_state_panel.dart';
 import 'submission_status_badge.dart';
 import 'submission_attachment_list.dart';
 import 'submission_review_progress.dart';
@@ -287,21 +288,15 @@ class _SubmissionDetailScreenState
             future: _future,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
+                return const AppLoadingState(
+                  message: 'Memuat detail pengajuan…',
+                );
               }
               if (snapshot.hasError) {
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Pengajuan tidak dapat dimuat.'),
-                      const SizedBox(height: 12),
-                      OutlinedButton(
-                        onPressed: () => setState(() => _future = _load()),
-                        child: const Text('Coba lagi'),
-                      ),
-                    ],
-                  ),
+                return AppErrorState(
+                  error: snapshot.error,
+                  fallbackMessage: 'Detail pengajuan tidak dapat dimuat.',
+                  onRetry: () => setState(() => _future = _load()),
                 );
               }
               final result = snapshot.requireData;

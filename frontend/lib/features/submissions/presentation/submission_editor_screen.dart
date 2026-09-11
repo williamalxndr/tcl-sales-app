@@ -8,6 +8,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/platform/downloaded_file_saver.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
+import '../../../core/ui/async_state_panel.dart';
 import 'submission_attachment_list.dart';
 
 class SubmissionEditorScreen extends ConsumerStatefulWidget {
@@ -359,20 +360,13 @@ class _SubmissionEditorScreenState
   Widget build(BuildContext context) {
     if (_draft == null) {
       return SafeArea(
-        child: Center(
-          child: _error == null
-              ? const CircularProgressIndicator()
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('Draft tidak dapat dimuat.'),
-                    OutlinedButton(
-                      onPressed: _load,
-                      child: const Text('Coba lagi'),
-                    ),
-                  ],
-                ),
-        ),
+        child: _error == null
+            ? const AppLoadingState(message: 'Memuat editor draft…')
+            : AppErrorState(
+                error: _error,
+                fallbackMessage: 'Draft tidak dapat dimuat.',
+                onRetry: _load,
+              ),
       );
     }
     return SafeArea(

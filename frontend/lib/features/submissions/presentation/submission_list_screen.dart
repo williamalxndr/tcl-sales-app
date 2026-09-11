@@ -6,6 +6,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/network/api_exception.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
+import '../../../core/ui/async_state_panel.dart';
 import 'submission_status_badge.dart';
 
 class SubmissionListScreen extends ConsumerStatefulWidget {
@@ -144,17 +145,27 @@ class _SubmissionListScreenState extends ConsumerState<SubmissionListScreen> {
                     future: _future,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState != ConnectionState.done) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const AppLoadingState(
+                          message: 'Memuat daftar pengajuan…',
+                        );
                       }
                       if (snapshot.hasError) {
-                        return _ListError(
+                        return AppErrorState(
                           error: snapshot.error,
+                          fallbackMessage: 'Pengajuan tidak dapat dimuat.',
                           onRetry: _reload,
                         );
                       }
                       final result = snapshot.requireData;
                       final items = result.items;
-                      if (items.isEmpty) return const _EmptySubmissions();
+                      if (items.isEmpty) {
+                        return const AppEmptyState(
+                          title: 'Belum ada pengajuan',
+                          message:
+                              'Buat pengajuan program pertama untuk memulai alur pemeriksaan.',
+                          icon: Icons.description_outlined,
+                        );
+                      }
                       return Column(
                         children: [
                           Expanded(child: _SubmissionTable(items: items)),
@@ -377,38 +388,6 @@ class _TableRow extends StatelessWidget {
           ),
         ],
       ),
-    ),
-  );
-}
-
-class _EmptySubmissions extends StatelessWidget {
-  const _EmptySubmissions();
-  @override
-  Widget build(BuildContext context) => const Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.description_outlined, size: 44, color: Color(0xFF7C8791)),
-        SizedBox(height: 12),
-        Text('Belum ada pengajuan program.'),
-      ],
-    ),
-  );
-}
-
-class _ListError extends StatelessWidget {
-  const _ListError({required this.error, required this.onRetry});
-  final Object? error;
-  final VoidCallback onRetry;
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Pengajuan tidak dapat dimuat.'),
-        const SizedBox(height: 10),
-        OutlinedButton(onPressed: onRetry, child: const Text('Coba lagi')),
-      ],
     ),
   );
 }

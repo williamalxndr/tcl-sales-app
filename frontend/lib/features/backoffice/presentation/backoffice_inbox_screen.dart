@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/providers.dart';
-import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_theme.dart';
+import '../../../core/ui/async_state_panel.dart';
 import '../../submissions/domain/submission.dart';
 import '../../submissions/presentation/submission_status_badge.dart';
 import '../domain/backoffice_submission.dart';
@@ -396,19 +396,33 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                   future: _future,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState != ConnectionState.done) {
-                      return const Center(child: CircularProgressIndicator());
+                      return AppLoadingState(
+                        message: widget.history
+                            ? 'Memuat riwayat review…'
+                            : 'Memuat inbox reviewer…',
+                      );
                     }
                     if (snapshot.hasError) {
-                      return _InboxError(
+                      return AppErrorState(
                         error: snapshot.error,
+                        fallbackMessage: widget.history
+                            ? 'Riwayat review tidak dapat dimuat.'
+                            : 'Inbox Backoffice tidak dapat dimuat.',
                         onRetry: () => _reload(),
                       );
                     }
                     final result = snapshot.requireData;
                     if (result.items.isEmpty) {
-                      return _EmptyInbox(
-                        history: widget.history,
-                        onRefresh: () => _reload(),
+                      return AppEmptyState(
+                        title: widget.history
+                            ? 'Belum ada riwayat review'
+                            : 'Inbox Anda sudah bersih',
+                        message: widget.history
+                            ? 'Tugas yang telah diputuskan akan tersimpan di halaman ini.'
+                            : 'Tidak ada pengajuan yang sedang menunggu tindakan Anda.',
+                        icon: widget.history ? Icons.history : Icons.task_alt,
+                        actionLabel: 'Muat ulang',
+                        onAction: () => _reload(),
                       );
                     }
                     return Column(
@@ -711,56 +725,6 @@ class _InboxPagination extends StatelessWidget {
         label: const Text('Berikutnya'),
       ),
     ],
-  );
-}
-
-class _EmptyInbox extends StatelessWidget {
-  const _EmptyInbox({required this.history, required this.onRefresh});
-
-  final bool history;
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.task_alt, size: 38, color: AppColors.navy),
-        const SizedBox(height: 12),
-        Text(
-          history
-              ? 'Belum ada tugas review yang selesai.'
-              : 'Tidak ada pengajuan yang menunggu Anda.',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton(onPressed: onRefresh, child: const Text('Muat ulang')),
-      ],
-    ),
-  );
-}
-
-class _InboxError extends StatelessWidget {
-  const _InboxError({required this.error, required this.onRetry});
-
-  final Object? error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          error is ApiException
-              ? (error as ApiException).message
-              : 'Inbox Backoffice tidak dapat dimuat.',
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 10),
-        FilledButton(onPressed: onRetry, child: const Text('Coba lagi')),
-      ],
-    ),
   );
 }
 
