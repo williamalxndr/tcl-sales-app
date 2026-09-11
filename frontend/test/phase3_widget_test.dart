@@ -133,6 +133,42 @@ void main() {
     expect(find.text('Pengajuan berhasil dikirim.'), findsOneWidget);
   });
 
+  testWidgets('submission detail renders attachment metadata from API', (
+    tester,
+  ) async {
+    _desktop(tester);
+    final api = _api(
+      (request) => _json({
+        'data': _submission(
+          attachments: const [
+            {
+              'id': 'att_api',
+              'submissionId': 'sub_1',
+              'fileName': 'Rincian Target API.xlsx',
+              'contentType':
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              'sizeBytes': 421888,
+              'scanStatus': 'clean',
+              'uploadedAt': '2026-09-01T03:06:00Z',
+            },
+          ],
+        ),
+        'meta': _meta(),
+      }),
+    );
+    addTearDown(api.close);
+
+    await _pump(
+      tester,
+      api,
+      const SubmissionDetailScreen(submissionId: 'sub_1'),
+    );
+
+    expect(find.text('Rincian Target API.xlsx'), findsOneWidget);
+    expect(find.textContaining('XLSX · 412 KB · diunggah'), findsOneWidget);
+    expect(find.text('Tanggal pengajuan'), findsOneWidget);
+  });
+
   testWidgets('backoffice inbox renders an actionable API row', (tester) async {
     _desktop(tester);
     final api = _api(
@@ -331,6 +367,7 @@ Map<String, dynamic> _submission({
   List<String> actions = const ['update'],
   bool summary = false,
   bool backoffice = false,
+  List<Map<String, dynamic>> attachments = const [],
 }) {
   final data = <String, dynamic>{
     'id': 'sub_1',
@@ -379,7 +416,7 @@ Map<String, dynamic> _submission({
               },
             ]
           : [],
-      'attachments': [],
+      'attachments': attachments,
       'allowedActions': actions,
       'submissionIssues': [],
     });

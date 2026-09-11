@@ -7,6 +7,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/platform/downloaded_file_saver.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/async_state_panel.dart';
+import '../../../core/ui/display_formatters.dart';
 import '../../submissions/domain/submission.dart';
 import '../../submissions/presentation/submission_status_badge.dart';
 import '../../submissions/presentation/submission_review_progress.dart';
@@ -571,7 +572,7 @@ class _DetailFields extends StatelessWidget {
       ('Periode Pelaksanaan', item.periodLabel),
       ('Estimasi Biaya', _costLabel(item.estimatedCost)),
       ('Pengaju', detail.owner.fullName),
-      ('Tanggal Pengajuan', detail.submittedAt ?? '—'),
+      ('Tanggal Pengajuan', formatApiDateTime(detail.submittedAt)),
     ];
     return Column(
       children: fields
@@ -656,7 +657,9 @@ class _AttachmentMetadata extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               Text(
-                '${_fileSize(attachment.sizeBytes)} · ${attachment.scanStatus}',
+                '${attachment.extension} · '
+                '${formatFileSize(attachment.sizeBytes)} · '
+                'diunggah ${formatApiDateTime(attachment.uploadedAt)}',
                 style: const TextStyle(fontSize: 11.5, color: AppColors.faint),
               ),
             ],
@@ -682,12 +685,6 @@ String _costLabel(String? amount) {
   if (amount == null) return '—';
   final integer = amount.split('.').first;
   return 'Rp ${integer.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}';
-}
-
-String _fileSize(int bytes) {
-  if (bytes >= 1048576) return '${(bytes / 1048576).toStringAsFixed(1)} MB';
-  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
-  return '$bytes B';
 }
 
 String _activeRole(Submission submission) {

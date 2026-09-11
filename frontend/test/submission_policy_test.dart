@@ -70,6 +70,20 @@ void main() {
     expect(attachment.scanStatus, 'clean');
   });
 
+  test('rejects attachment payloads without an API file name', () {
+    expect(
+      () => SubmissionAttachment.fromJson({
+        'id': 'att_proposal',
+        'submissionId': 'sub_0144',
+        'contentType': 'application/pdf',
+        'sizeBytes': 1800000,
+        'scanStatus': 'clean',
+        'uploadedAt': '2026-08-21T03:06:00Z',
+      }),
+      throwsA(anything),
+    );
+  });
+
   test('parses an attachment upload result and its new submission version', () {
     final result = AttachmentUploadResult.fromJson({
       'attachment': {

@@ -14,6 +14,7 @@ class SubmissionSummary {
     this.periodStart,
     this.periodEnd,
     this.estimatedCost,
+    this.submittedAt,
   });
 
   final String id;
@@ -26,6 +27,7 @@ class SubmissionSummary {
   final String? periodStart;
   final String? periodEnd;
   final String? estimatedCost;
+  final String? submittedAt;
   final String status;
   final int version;
 
@@ -51,6 +53,7 @@ class SubmissionSummary {
       periodStart: json['periodStart'] as String?,
       periodEnd: json['periodEnd'] as String?,
       estimatedCost: cost is Map ? cost['amount'] as String? : null,
+      submittedAt: json['submittedAt'] as String?,
       status: json['status'] as String? ?? 'draft',
       version: json['version'] as int? ?? 1,
     );
@@ -85,6 +88,7 @@ class Submission extends SubmissionSummary {
     super.periodStart,
     super.periodEnd,
     super.estimatedCost,
+    super.submittedAt,
   });
 
   final List<String> allowedActions;
@@ -119,6 +123,7 @@ class Submission extends SubmissionSummary {
     periodStart: periodStart,
     periodEnd: periodEnd,
     estimatedCost: estimatedCost,
+    submittedAt: submittedAt,
   );
 
   factory Submission.fromJson(Map<String, dynamic> json) {
@@ -134,6 +139,7 @@ class Submission extends SubmissionSummary {
       periodStart: summary.periodStart,
       periodEnd: summary.periodEnd,
       estimatedCost: summary.estimatedCost,
+      submittedAt: summary.submittedAt,
       status: summary.status,
       version: summary.version,
       allowedActions: (json['allowedActions'] as List<dynamic>? ?? const [])
@@ -195,13 +201,13 @@ class SubmissionAttachment {
 
   factory SubmissionAttachment.fromJson(Map<String, dynamic> json) =>
       SubmissionAttachment(
-        id: json['id'] as String? ?? '',
-        submissionId: json['submissionId'] as String? ?? '',
-        fileName: json['fileName'] as String? ?? 'Lampiran',
-        contentType: json['contentType'] as String? ?? '',
-        sizeBytes: json['sizeBytes'] as int? ?? 0,
-        scanStatus: json['scanStatus'] as String? ?? 'pending',
-        uploadedAt: json['uploadedAt'] as String? ?? '',
+        id: json['id'] as String,
+        submissionId: json['submissionId'] as String,
+        fileName: json['fileName'] as String,
+        contentType: json['contentType'] as String,
+        sizeBytes: json['sizeBytes'] as int,
+        scanStatus: json['scanStatus'] as String,
+        uploadedAt: json['uploadedAt'] as String,
       );
 
   String get extension {

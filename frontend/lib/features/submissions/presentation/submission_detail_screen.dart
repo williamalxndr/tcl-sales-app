@@ -8,6 +8,7 @@ import '../../../core/platform/downloaded_file_saver.dart';
 import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/async_state_panel.dart';
+import '../../../core/ui/display_formatters.dart';
 import 'submission_status_badge.dart';
 import 'submission_attachment_list.dart';
 import 'submission_review_progress.dart';
@@ -470,6 +471,13 @@ class _SubmissionDetailScreenState
                             value: item.estimatedCost == null
                                 ? 'Belum diisi'
                                 : 'Rp ${item.estimatedCost}',
+                          ),
+                          _DetailRow(
+                            label: 'Tanggal pengajuan',
+                            value: formatApiDateTime(
+                              item.submittedAt,
+                              fallback: 'Belum dikirim',
+                            ),
                           ),
                           const SizedBox(height: 16),
                           const Text(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/ui/app_theme.dart';
+import '../../../core/ui/display_formatters.dart';
 import '../domain/submission.dart';
 
 class SubmissionAttachmentList extends StatelessWidget {
@@ -118,7 +119,9 @@ class _AttachmentRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '${_bytes(attachment.sizeBytes)} · ${scan.label}',
+                    '${attachment.extension} · '
+                    '${formatFileSize(attachment.sizeBytes)} · '
+                    'diunggah ${formatApiDateTime(attachment.uploadedAt)}',
                     style: const TextStyle(
                       fontSize: 11.5,
                       color: AppColors.faint,
@@ -202,10 +205,6 @@ class _AttachmentRow extends StatelessWidget {
       ),
     );
   }
-
-  String _bytes(int bytes) => bytes < 1024 * 1024
-      ? '${(bytes / 1024).toStringAsFixed(0)} KB'
-      : '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
 class AttachmentScanVisual {
