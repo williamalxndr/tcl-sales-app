@@ -7,6 +7,7 @@ import '../../features/authentication/application/auth_controller.dart';
 import '../../features/authentication/presentation/auth_loading_screen.dart';
 import '../../features/authentication/presentation/authenticated_shell.dart';
 import '../../features/authentication/presentation/login_screen.dart';
+import '../../features/backoffice/presentation/backoffice_inbox_screen.dart';
 import '../../features/service_status/presentation/workspace_screen.dart';
 import '../../features/submissions/presentation/submission_detail_screen.dart';
 import '../../features/submissions/presentation/submission_list_screen.dart';
@@ -34,11 +35,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (path == '/' && auth.user!.roles.contains('submitter')) {
         return '/submissions';
       }
+      if (path == '/' && auth.user!.roles.any(_isReviewerRole)) {
+        return '/backoffice';
+      }
       return null;
     },
     routes: [
       GoRoute(path: _loadingPath, builder: (_, _) => const AuthLoadingScreen()),
       GoRoute(path: _loginPath, builder: (_, _) => const LoginScreen()),
+      GoRoute(
+        path: '/backoffice',
+        builder: (_, _) =>
+            const AuthenticatedShell(child: BackofficeInboxScreen()),
+      ),
       GoRoute(
         path: '/submissions',
         builder: (_, _) =>
@@ -85,6 +94,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.onDispose(router.dispose);
   return router;
 });
+
+bool _isReviewerRole(String role) =>
+    role == 'checker' || role == 'acknowledger' || role == 'approver';
 
 final authRouterRefreshProvider = Provider<ValueNotifier<AuthState>>((ref) {
   final notifier = ValueNotifier(ref.read(authControllerProvider));
