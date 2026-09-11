@@ -85,3 +85,27 @@ class BackofficePeoplePage {
   final int totalPages;
   final int totalItems;
 }
+
+class BackofficeSubmissionDetail {
+  const BackofficeSubmissionDetail({
+    required this.submission,
+    required this.owner,
+    this.submittedAt,
+  });
+
+  final Submission submission;
+  final PolicyPerson owner;
+  final String? submittedAt;
+
+  factory BackofficeSubmissionDetail.fromJson(Map<String, dynamic> json) {
+    final owner = json['owner'];
+    if (owner is! Map) {
+      throw const FormatException('Backoffice detail is missing its owner.');
+    }
+    return BackofficeSubmissionDetail(
+      submission: Submission.fromJson(json),
+      owner: PolicyPerson.fromJson(Map<String, dynamic>.from(owner)),
+      submittedAt: json['submittedAt'] as String?,
+    );
+  }
+}

@@ -8,6 +8,7 @@ import '../../features/authentication/presentation/auth_loading_screen.dart';
 import '../../features/authentication/presentation/authenticated_shell.dart';
 import '../../features/authentication/presentation/login_screen.dart';
 import '../../features/backoffice/presentation/backoffice_inbox_screen.dart';
+import '../../features/backoffice/presentation/backoffice_detail_screen.dart';
 import '../../features/service_status/presentation/workspace_screen.dart';
 import '../../features/submissions/presentation/submission_detail_screen.dart';
 import '../../features/submissions/presentation/submission_list_screen.dart';
@@ -47,6 +48,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/backoffice',
         builder: (_, _) =>
             const AuthenticatedShell(child: BackofficeInboxScreen()),
+      ),
+      GoRoute(
+        path: '/backoffice/submissions/:submissionId',
+        builder: (_, state) => AuthenticatedShell(
+          child: BackofficeDetailScreen(
+            submissionId: state.pathParameters['submissionId']!,
+          ),
+        ),
       ),
       GoRoute(
         path: '/submissions',

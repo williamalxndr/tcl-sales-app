@@ -88,4 +88,11 @@ class BackofficeRepository {
       totalItems: response.meta['totalItems'] as int? ?? items.length,
     );
   }
+
+  Future<BackofficeSubmissionDetail> getSubmission(String submissionId) async {
+    final data = await _api.getObject(
+      'backoffice/program-submissions/$submissionId',
+    );
+    return BackofficeSubmissionDetail.fromJson(data);
+  }
 }
