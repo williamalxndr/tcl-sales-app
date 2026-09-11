@@ -9,6 +9,7 @@ import '../domain/submission.dart';
 import '../../../core/ui/app_theme.dart';
 import 'submission_status_badge.dart';
 import 'submission_attachment_list.dart';
+import 'submission_review_progress.dart';
 
 class SubmissionDetailScreen extends ConsumerStatefulWidget {
   const SubmissionDetailScreen({super.key, required this.submissionId});
@@ -24,6 +25,7 @@ class _SubmissionDetailScreenState
   late Future<_SubmissionDetailData> _future;
   String? _downloadingAttachmentId;
   bool _submitting = false;
+  ApiException? _submitFailure;
   @override
   void initState() {
     super.initState();
@@ -130,7 +132,10 @@ class _SubmissionDetailScreenState
     );
     if (confirmed != true || !mounted) return;
 
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _submitFailure = null;
+    });
     try {
       final submitted = await ref
           .read(submissionRepositoryProvider)
@@ -144,6 +149,7 @@ class _SubmissionDetailScreenState
       );
     } on ApiException catch (error) {
       if (mounted) {
+        setState(() => _submitFailure = error);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(error.message)));
@@ -214,6 +220,14 @@ class _SubmissionDetailScreenState
                   const SizedBox(height: 16),
                   if (result.policy != null) ...[
                     _PolicySummary(policy: result.policy!),
+                    const SizedBox(height: 16),
+                  ],
+                  if (item.status != 'draft') ...[
+                    SubmissionReviewProgress(submission: item),
+                    const SizedBox(height: 16),
+                  ],
+                  if (_submitFailure case final ApiException error) ...[
+                    _SubmitFailureCard(error: error),
                     const SizedBox(height: 16),
                   ],
                   Card(
@@ -447,6 +461,109 @@ class _SubmitSummaryRow extends StatelessWidget {
       ],
     ),
   );
+}
+
+class _SubmitFailureCard extends StatelessWidget {
+  const _SubmitFailureCard({required this.error});
+
+  final ApiException error;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = error.details
+        .map(
+          (detail) => SubmissionIssue(
+            field: detail.field,
+            code: detail.code,
+            message: detail.message,
+          ),
+        )
+        .toList(growable: false);
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      label: 'Pengajuan gagal dikirim. ${error.message}',
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 15),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7F5),
+          border: Border.all(color: const Color(0xFFF0D2CC)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.error_outline, size: 20, color: Color(0xFF9C4030)),
+                SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    'Pengajuan belum dapat dikirim',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF843728),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              error.message,
+              style: const TextStyle(
+                fontSize: 12.5,
+                height: 1.45,
+                color: AppColors.muted,
+              ),
+            ),
+            if (details.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              ...details.map(
+                (detail) => Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Icon(
+                          Icons.circle,
+                          size: 5,
+                          color: Color(0xFF9C4030),
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${detail.fieldLabel}: ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              TextSpan(text: detail.message),
+                            ],
+                          ),
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SubmissionBlockers extends StatelessWidget {

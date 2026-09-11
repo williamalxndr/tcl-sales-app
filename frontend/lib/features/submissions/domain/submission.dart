@@ -75,7 +75,10 @@ class Submission extends SubmissionSummary {
     required this.allowedActions,
     required this.issues,
     required this.reviewPlan,
+    required this.reviewTasks,
+    required this.myActiveTaskIds,
     required this.attachments,
+    this.currentStage,
     super.programName,
     super.programType,
     super.programTypeId,
@@ -87,7 +90,10 @@ class Submission extends SubmissionSummary {
   final List<String> allowedActions;
   final List<SubmissionIssue> issues;
   final ReviewPlan reviewPlan;
+  final List<SubmissionReviewTask> reviewTasks;
+  final List<String> myActiveTaskIds;
   final List<SubmissionAttachment> attachments;
+  final String? currentStage;
 
   Submission copyWith({
     int? version,
@@ -103,7 +109,10 @@ class Submission extends SubmissionSummary {
     allowedActions: allowedActions,
     issues: issues,
     reviewPlan: reviewPlan ?? this.reviewPlan,
+    reviewTasks: reviewTasks,
+    myActiveTaskIds: myActiveTaskIds,
     attachments: attachments ?? this.attachments,
+    currentStage: currentStage,
     programName: programName,
     programType: programType,
     programTypeId: programTypeId,
@@ -142,6 +151,16 @@ class Submission extends SubmissionSummary {
             ? Map<String, dynamic>.from(json['reviewPlan'] as Map)
             : const {},
       ),
+      reviewTasks: (json['reviewTasks'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (task) =>
+                SubmissionReviewTask.fromJson(Map<String, dynamic>.from(task)),
+          )
+          .toList(growable: false),
+      myActiveTaskIds: (json['myActiveTaskIds'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
           .whereType<Map>()
           .map(
@@ -150,6 +169,7 @@ class Submission extends SubmissionSummary {
             ),
           )
           .toList(growable: false),
+      currentStage: json['currentStage'] as String?,
     );
   }
 }
@@ -272,6 +292,60 @@ class ReviewPlan {
           : null,
       acknowledgers: people('acknowledgers'),
       approvers: people('approvers'),
+    );
+  }
+}
+
+class SubmissionReviewTask {
+  const SubmissionReviewTask({
+    required this.id,
+    required this.stage,
+    required this.reviewer,
+    required this.position,
+    required this.status,
+    this.decidedAt,
+    this.note,
+  });
+
+  final String id;
+  final String stage;
+  final PolicyPerson reviewer;
+  final int position;
+  final String status;
+  final String? decidedAt;
+  final String? note;
+
+  bool get isActive => status == 'ready';
+
+  String get stageLabel => switch (stage) {
+    'checker' => 'Checker',
+    'acknowledgement' => 'Mengetahui',
+    'approval' => 'Menyetujui',
+    _ => stage,
+  };
+
+  String get statusLabel => switch (status) {
+    'waiting' => 'Menunggu giliran',
+    'ready' => 'Sedang diperiksa',
+    'approved' => 'Disetujui',
+    'rejected' => 'Ditolak',
+    'voided' => 'Dibatalkan',
+    _ => status,
+  };
+
+  factory SubmissionReviewTask.fromJson(Map<String, dynamic> json) {
+    final reviewer = json['reviewer'];
+    if (reviewer is! Map) {
+      throw const FormatException('Review task is missing its reviewer.');
+    }
+    return SubmissionReviewTask(
+      id: json['id'] as String? ?? '',
+      stage: json['stage'] as String? ?? '',
+      reviewer: PolicyPerson.fromJson(Map<String, dynamic>.from(reviewer)),
+      position: json['position'] as int? ?? 1,
+      status: json['status'] as String? ?? 'waiting',
+      decidedAt: json['decidedAt'] as String?,
+      note: json['note'] as String?,
     );
   }
 }

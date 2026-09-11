@@ -23,9 +23,34 @@ void main() {
               'id': 'sub_0144',
               'programNumber': 'PRG-2026-0144',
               'status': 'pendingChecker',
+              'currentStage': 'checker',
               'version': 5,
               'locations': [],
-              'reviewPlan': {},
+              'myActiveTaskIds': [],
+              'reviewPlan': {
+                'checker': {
+                  'id': 'usr_andi',
+                  'fullName': 'Andi Setiawan',
+                  'jobTitle': 'Supervisor Sales',
+                },
+                'acknowledgers': [],
+                'approvers': [],
+              },
+              'reviewTasks': [
+                {
+                  'id': 'tsk_checker',
+                  'stage': 'checker',
+                  'reviewer': {
+                    'id': 'usr_andi',
+                    'fullName': 'Andi Setiawan',
+                    'jobTitle': 'Supervisor Sales',
+                  },
+                  'position': 1,
+                  'status': 'ready',
+                  'decidedAt': null,
+                  'note': null,
+                },
+              ],
               'attachments': [],
               'allowedActions': ['downloadPdf'],
               'submissionIssues': [],
@@ -44,5 +69,8 @@ void main() {
 
     expect(submission.status, 'pendingChecker');
     expect(submission.version, 5);
+    expect(submission.currentStage, 'checker');
+    expect(submission.reviewTasks.single.isActive, isTrue);
+    expect(submission.reviewTasks.single.reviewer.fullName, 'Andi Setiawan');
   });
 }
