@@ -47,3 +47,41 @@ class BackofficeSubmissionPage {
   final int totalPages;
   final int totalItems;
 }
+
+enum BackofficePersonField {
+  owner('owner', 'ownerId', 'Pengaju', null),
+  checker('checker', 'checkerId', 'Checker', 'pendingChecker'),
+  acknowledger(
+    'acknowledger',
+    'acknowledgerId',
+    'Mengetahui',
+    'pendingAcknowledgement',
+  ),
+  approver('approver', 'approverId', 'Menyetujui', 'pendingApproval');
+
+  const BackofficePersonField(
+    this.apiValue,
+    this.queryParameter,
+    this.label,
+    this.submissionStatus,
+  );
+
+  final String apiValue;
+  final String queryParameter;
+  final String label;
+  final String? submissionStatus;
+}
+
+class BackofficePeoplePage {
+  const BackofficePeoplePage({
+    required this.items,
+    required this.page,
+    required this.totalPages,
+    required this.totalItems,
+  });
+
+  final List<PolicyPerson> items;
+  final int page;
+  final int totalPages;
+  final int totalItems;
+}

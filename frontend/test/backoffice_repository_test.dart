@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sales_app/core/network/api_client.dart';
 import 'package:sales_app/features/backoffice/data/backoffice_repository.dart';
+import 'package:sales_app/features/backoffice/domain/backoffice_submission.dart';
 
 void main() {
   test('loads the paginated reviewer inbox', () async {
@@ -97,5 +98,52 @@ void main() {
     addTearDown(api.close);
 
     await BackofficeRepository(api).listInbox(status: 'pendingApproval');
+  });
+
+  test('loads scoped people and sends the selected reviewer filter', () async {
+    final requests = <Uri>[];
+    final api = ApiClient(
+      baseUrl: Uri.parse('https://api.example.com/api/v1'),
+      client: MockClient((request) async {
+        requests.add(request.url);
+        if (request.url.path.endsWith('/filter-options/people')) {
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {
+                  'id': 'usr_dewi',
+                  'fullName': 'Dewi Larasati',
+                  'jobTitle': 'Branch Manager',
+                },
+              ],
+              'meta': {'requestId': 'req_people'},
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'data': [],
+            'meta': {'requestId': 'req_filtered'},
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(api.close);
+    final repository = BackofficeRepository(api);
+
+    final people = await repository.listFilterPeople(
+      field: BackofficePersonField.acknowledger,
+    );
+    await repository.listInbox(
+      reviewerField: BackofficePersonField.acknowledger,
+      reviewerId: 'usr_dewi',
+    );
+
+    expect(people.items.single.fullName, 'Dewi Larasati');
+    expect(requests.first.queryParameters['field'], 'acknowledger');
+    expect(requests.first.queryParameters['scope'], 'inbox');
+    expect(requests.last.queryParameters['acknowledgerId'], 'usr_dewi');
   });
 }

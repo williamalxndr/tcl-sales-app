@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_theme.dart';
+import '../../submissions/domain/submission.dart';
 import '../../submissions/presentation/submission_status_badge.dart';
 import '../domain/backoffice_submission.dart';
 
@@ -21,8 +22,12 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
   var _page = 1;
   String? _appliedProgramNumber;
   String? _selectedStatus;
-  _ReviewerRoleFilter? _selectedRole;
+  BackofficePersonField? _selectedRole;
   String? _appliedStatus;
+  String? _selectedReviewerId;
+  BackofficePersonField? _appliedReviewerField;
+  String? _appliedReviewerId;
+  Future<BackofficePeoplePage>? _peopleFuture;
 
   @override
   void initState() {
@@ -42,6 +47,8 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
         page: _page,
         programNumber: _appliedProgramNumber,
         status: _appliedStatus,
+        reviewerField: _appliedReviewerField,
+        reviewerId: _appliedReviewerId,
       );
 
   void _reload({bool firstPage = false}) => setState(() {
@@ -60,6 +67,8 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
   void _applyFilters() {
     _appliedProgramNumber = _programNumber.text.trim();
     _appliedStatus = _selectedRole?.submissionStatus ?? _selectedStatus;
+    _appliedReviewerField = _selectedReviewerId == null ? null : _selectedRole;
+    _appliedReviewerId = _selectedReviewerId;
     _reload(firstPage: true);
   }
 
@@ -67,8 +76,12 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
     _programNumber.clear();
     _selectedStatus = null;
     _selectedRole = null;
+    _selectedReviewerId = null;
+    _peopleFuture = null;
     _appliedProgramNumber = null;
     _appliedStatus = null;
+    _appliedReviewerField = null;
+    _appliedReviewerId = null;
     _reload(firstPage: true);
   }
 
@@ -169,24 +182,48 @@ class _BackofficeInboxScreenState extends ConsumerState<BackofficeInboxScreen> {
                           ),
                           SizedBox(
                             width: 210,
-                            child: DropdownButtonFormField<_ReviewerRoleFilter>(
-                              initialValue: _selectedRole,
-                              decoration: const InputDecoration(
-                                labelText: 'Peran reviewer',
-                              ),
-                              hint: const Text('Semua peran'),
-                              items: _ReviewerRoleFilter.values
-                                  .map(
-                                    (role) => DropdownMenuItem(
-                                      value: role,
-                                      child: Text(role.label),
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                              onChanged: (value) => setState(() {
-                                _selectedRole = value;
-                                if (value != null) _selectedStatus = null;
-                              }),
+                            child:
+                                DropdownButtonFormField<BackofficePersonField>(
+                                  initialValue: _selectedRole,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Peran reviewer',
+                                  ),
+                                  hint: const Text('Semua peran'),
+                                  items: BackofficePersonField.values
+                                      .where(
+                                        (field) =>
+                                            field !=
+                                            BackofficePersonField.owner,
+                                      )
+                                      .map(
+                                        (role) => DropdownMenuItem(
+                                          value: role,
+                                          child: Text(role.label),
+                                        ),
+                                      )
+                                      .toList(growable: false),
+                                  onChanged: (value) => setState(() {
+                                    _selectedRole = value;
+                                    _selectedReviewerId = null;
+                                    _peopleFuture = value == null
+                                        ? null
+                                        : ref
+                                              .read(
+                                                backofficeRepositoryProvider,
+                                              )
+                                              .listFilterPeople(field: value);
+                                    if (value != null) _selectedStatus = null;
+                                  }),
+                                ),
+                          ),
+                          SizedBox(
+                            width: 230,
+                            child: _ReviewerPersonFilter(
+                              key: ValueKey(_selectedRole),
+                              future: _peopleFuture,
+                              value: _selectedReviewerId,
+                              onChanged: (value) =>
+                                  setState(() => _selectedReviewerId = value),
                             ),
                           ),
                           FilledButton(
@@ -560,13 +597,63 @@ String _costLabel(String? amount) {
   return 'Rp $grouped';
 }
 
-enum _ReviewerRoleFilter {
-  checker('Checker', 'pendingChecker'),
-  acknowledger('Mengetahui', 'pendingAcknowledgement'),
-  approver('Menyetujui', 'pendingApproval');
+class _ReviewerPersonFilter extends StatelessWidget {
+  const _ReviewerPersonFilter({
+    super.key,
+    required this.future,
+    required this.value,
+    required this.onChanged,
+  });
 
-  const _ReviewerRoleFilter(this.label, this.submissionStatus);
+  final Future<BackofficePeoplePage>? future;
+  final String? value;
+  final ValueChanged<String?> onChanged;
 
-  final String label;
-  final String submissionStatus;
+  @override
+  Widget build(BuildContext context) {
+    if (future == null) {
+      return DropdownButtonFormField<String>(
+        items: const [],
+        onChanged: null,
+        decoration: const InputDecoration(labelText: 'Orang reviewer'),
+        hint: const Text('Pilih peran dahulu'),
+      );
+    }
+    return FutureBuilder<BackofficePeoplePage>(
+      future: future,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return DropdownButtonFormField<String>(
+            items: const [],
+            onChanged: null,
+            decoration: const InputDecoration(labelText: 'Orang reviewer'),
+            hint: Text(
+              snapshot.hasError ? 'Opsi gagal dimuat' : 'Memuat opsi…',
+            ),
+          );
+        }
+        return DropdownButtonFormField<String>(
+          initialValue: value,
+          decoration: const InputDecoration(labelText: 'Orang reviewer'),
+          hint: const Text('Semua orang'),
+          items: snapshot.requireData.items
+              .map(
+                (person) => DropdownMenuItem(
+                  value: person.id,
+                  child: Text(
+                    _personLabel(person),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              )
+              .toList(growable: false),
+          onChanged: onChanged,
+        );
+      },
+    );
+  }
 }
+
+String _personLabel(PolicyPerson person) => person.jobTitle == null
+    ? person.fullName
+    : '${person.fullName} · ${person.jobTitle}';
