@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../../../core/network/api_client.dart';
 import '../../submissions/domain/submission.dart';
 import '../domain/backoffice_submission.dart';
@@ -131,6 +133,23 @@ class BackofficeRepository {
     );
   }
 
+  Future<BackofficeSubmissionDetail> approveTask({
+    required String submissionId,
+    required String taskId,
+    required int version,
+    String? note,
+  }) async {
+    final cleanNote = note?.trim();
+    final data = await _api.postObject(
+      'backoffice/program-submissions/$submissionId/'
+      'review-tasks/$taskId/approve',
+      body: {if (cleanNote != null && cleanNote.isNotEmpty) 'note': cleanNote},
+      ifMatch: '"$version"',
+      idempotencyKey: _newIdempotencyKey('approve'),
+    );
+    return BackofficeSubmissionDetail.fromJson(data);
+  }
+
   String _downloadFileName(String? disposition, String fallback) {
     final encoded = RegExp(
       r"filename\*=UTF-8''([^;]+)",
@@ -148,5 +167,14 @@ class BackofficeRepository {
       '_',
     );
     return sanitized.trim().isEmpty ? fallback : sanitized.trim();
+  }
+
+  String _newIdempotencyKey(String prefix) {
+    final random = Random.secure();
+    final value = List.generate(
+      24,
+      (_) => random.nextInt(36).toRadixString(36),
+    ).join();
+    return '$prefix-$value';
   }
 }

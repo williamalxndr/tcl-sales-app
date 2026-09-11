@@ -26,6 +26,7 @@ class _BackofficeDetailScreenState
   late Future<BackofficeSubmissionDetail> _future;
   String? _downloadingAttachmentId;
   bool _downloadingPdf = false;
+  bool _deciding = false;
 
   @override
   void initState() {
@@ -102,6 +103,86 @@ class _BackofficeDetailScreenState
     }
   }
 
+  Future<void> _approve(BackofficeSubmissionDetail detail) async {
+    final taskId = detail.submission.myActiveTaskIds.firstOrNull;
+    if (taskId == null) return;
+    final note = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text(
+            'Setujui pengajuan',
+            style: TextStyle(color: Color(0xFF2F6B48)),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${detail.submission.programNumber} akan diteruskan ke tahap berikutnya.',
+                style: const TextStyle(color: AppColors.muted, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: note,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 2000,
+                decoration: const InputDecoration(
+                  labelText: 'Catatan (opsional)',
+                  hintText: 'Tambahkan catatan persetujuan',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2F6B48),
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Ya, setujui'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final decisionNote = note.text;
+    note.dispose();
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deciding = true);
+    try {
+      final updated = await ref
+          .read(backofficeRepositoryProvider)
+          .approveTask(
+            submissionId: detail.submission.id,
+            taskId: taskId,
+            version: detail.submission.version,
+            note: decisionNote,
+          );
+      if (!mounted) return;
+      setState(() => _future = Future.value(updated));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengajuan berhasil disetujui.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _deciding = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: FutureBuilder<BackofficeSubmissionDetail>(
@@ -117,8 +198,10 @@ class _BackofficeDetailScreenState
           detail: snapshot.requireData,
           downloadingAttachmentId: _downloadingAttachmentId,
           downloadingPdf: _downloadingPdf,
+          deciding: _deciding,
           onDownloadAttachment: _downloadAttachment,
           onDownloadPdf: _downloadPdf,
+          onApprove: _approve,
         );
       },
     ),
@@ -130,15 +213,19 @@ class _DetailDocument extends StatelessWidget {
     required this.detail,
     required this.downloadingAttachmentId,
     required this.downloadingPdf,
+    required this.deciding,
     required this.onDownloadAttachment,
     required this.onDownloadPdf,
+    required this.onApprove,
   });
 
   final BackofficeSubmissionDetail detail;
   final String? downloadingAttachmentId;
   final bool downloadingPdf;
+  final bool deciding;
   final ValueChanged<SubmissionAttachment> onDownloadAttachment;
   final ValueChanged<Submission> onDownloadPdf;
+  final ValueChanged<BackofficeSubmissionDetail> onApprove;
 
   @override
   Widget build(BuildContext context) {
@@ -269,6 +356,46 @@ class _DetailDocument extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   SubmissionReviewProgress(submission: item),
+                ],
+                if (item.allowedActions.contains('approve')) ...[
+                  const SizedBox(height: 18),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 15,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Tindakan Anda sebagai ${_activeRole(item)}',
+                              style: const TextStyle(color: AppColors.muted),
+                            ),
+                          ),
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF2F6B48),
+                            ),
+                            onPressed: deciding
+                                ? null
+                                : () => onApprove(detail),
+                            icon: deciding
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.check, size: 18),
+                            label: Text(deciding ? 'Memproses…' : 'Approve'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -435,4 +562,12 @@ String _fileSize(int bytes) {
   if (bytes >= 1048576) return '${(bytes / 1048576).toStringAsFixed(1)} MB';
   if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
   return '$bytes B';
+}
+
+String _activeRole(Submission submission) {
+  final activeIds = submission.myActiveTaskIds.toSet();
+  final task = submission.reviewTasks
+      .where((item) => activeIds.contains(item.id))
+      .firstOrNull;
+  return task?.stageLabel ?? 'Reviewer';
 }
