@@ -25,6 +25,7 @@ class _BackofficeDetailScreenState
     extends ConsumerState<BackofficeDetailScreen> {
   late Future<BackofficeSubmissionDetail> _future;
   String? _downloadingAttachmentId;
+  bool _downloadingPdf = false;
 
   @override
   void initState() {
@@ -69,6 +70,38 @@ class _BackofficeDetailScreenState
     }
   }
 
+  Future<void> _downloadPdf(Submission submission) async {
+    setState(() => _downloadingPdf = true);
+    try {
+      final download = await ref
+          .read(backofficeRepositoryProvider)
+          .downloadPdf(submission.id, submission.programNumber);
+      await const DownloadedFileSaver().save(
+        bytes: download.bytes,
+        fileName: download.fileName,
+        contentType: download.contentType,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${download.fileName} berhasil diunduh.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF tidak dapat disimpan.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingPdf = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: FutureBuilder<BackofficeSubmissionDetail>(
@@ -83,7 +116,9 @@ class _BackofficeDetailScreenState
         return _DetailDocument(
           detail: snapshot.requireData,
           downloadingAttachmentId: _downloadingAttachmentId,
+          downloadingPdf: _downloadingPdf,
           onDownloadAttachment: _downloadAttachment,
+          onDownloadPdf: _downloadPdf,
         );
       },
     ),
@@ -94,12 +129,16 @@ class _DetailDocument extends StatelessWidget {
   const _DetailDocument({
     required this.detail,
     required this.downloadingAttachmentId,
+    required this.downloadingPdf,
     required this.onDownloadAttachment,
+    required this.onDownloadPdf,
   });
 
   final BackofficeSubmissionDetail detail;
   final String? downloadingAttachmentId;
+  final bool downloadingPdf;
   final ValueChanged<SubmissionAttachment> onDownloadAttachment;
+  final ValueChanged<Submission> onDownloadPdf;
 
   @override
   Widget build(BuildContext context) {
@@ -121,6 +160,23 @@ class _DetailDocument extends StatelessWidget {
                       label: const Text('Kembali ke daftar'),
                     ),
                     const Spacer(),
+                    OutlinedButton.icon(
+                      onPressed:
+                          item.allowedActions.contains('downloadPdf') &&
+                              !downloadingPdf &&
+                              downloadingAttachmentId == null
+                          ? () => onDownloadPdf(item)
+                          : null,
+                      icon: downloadingPdf
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.picture_as_pdf_outlined, size: 17),
+                      label: Text(downloadingPdf ? 'Menyiapkan…' : 'Unduh PDF'),
+                    ),
+                    const SizedBox(width: 10),
                     SubmissionStatusBadge(status: item.status),
                   ],
                 ),
@@ -194,7 +250,8 @@ class _DetailDocument extends StatelessWidget {
                                   downloadingAttachmentId == attachment.id,
                               onDownload:
                                   attachment.scanStatus == 'clean' &&
-                                      downloadingAttachmentId == null
+                                      downloadingAttachmentId == null &&
+                                      !downloadingPdf
                                   ? () => onDownloadAttachment(attachment)
                                   : null,
                             ),

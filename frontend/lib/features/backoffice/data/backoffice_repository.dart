@@ -114,6 +114,23 @@ class BackofficeRepository {
     );
   }
 
+  Future<FileDownload> downloadPdf(
+    String submissionId,
+    String programNumber,
+  ) async {
+    final response = await _api.getBytes(
+      'backoffice/program-submissions/$submissionId/pdf',
+    );
+    return FileDownload(
+      bytes: response.bytes,
+      fileName: _downloadFileName(
+        response.headers['content-disposition'],
+        '$programNumber.pdf',
+      ),
+      contentType: response.headers['content-type'] ?? 'application/pdf',
+    );
+  }
+
   String _downloadFileName(String? disposition, String fallback) {
     final encoded = RegExp(
       r"filename\*=UTF-8''([^;]+)",

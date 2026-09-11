@@ -48,4 +48,29 @@ void main() {
       expect(result.fileName, 'Proposal.pdf');
     },
   );
+
+  test('downloads PDF from the authorized backoffice endpoint', () async {
+    final api = ApiClient(
+      baseUrl: Uri.parse('https://api.example.com/api/v1'),
+      client: MockClient((request) async {
+        expect(
+          request.url.path,
+          '/api/v1/backoffice/program-submissions/sub_1/pdf',
+        );
+        return http.Response.bytes(
+          Uint8List.fromList([37, 80, 68, 70]),
+          200,
+          headers: {'content-type': 'application/pdf'},
+        );
+      }),
+    );
+    addTearDown(api.close);
+
+    final result = await BackofficeRepository(
+      api,
+    ).downloadPdf('sub_1', 'PRG-2026-0001');
+
+    expect(result.fileName, 'PRG-2026-0001.pdf');
+    expect(result.contentType, 'application/pdf');
+  });
 }
