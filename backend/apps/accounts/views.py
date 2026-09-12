@@ -10,10 +10,15 @@ from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 
 from apps.core.api import success
-from apps.core.services import DomainError, audit, digest, rate_limit
+from apps.core.services import DomainError, audit, digest, idempotent, rate_limit
 
 from .models import AuthSession, RefreshCredential
-from .serializers import LoginSerializer, RefreshSerializer, profile
+from .serializers import (
+    EmployeeCreateSerializer,
+    LoginSerializer,
+    RefreshSerializer,
+    profile,
+)
 
 
 def iso(value):
@@ -209,3 +214,35 @@ class ProfileView(APIView):
         if request.query_params:
             raise DomainError("BAD_REQUEST", "Query parameters are not accepted.", 400)
         return success(request, profile(request.user))
+
+
+class SuperadminEmployeesView(APIView):
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if not request.user.is_active or not request.user.is_superuser:
+            raise DomainError("FORBIDDEN", "Superadmin access is required.", 403)
+        rate_limit("superadmin:" + request.user.pk, 120)
+
+    def post(self, request):
+        if request.query_params:
+            raise DomainError("BAD_REQUEST", "Query parameters are not accepted.", 400)
+        form = EmployeeCreateSerializer(data=request.data)
+        form.is_valid(raise_exception=True)
+
+        def create():
+            values = form.validated_data
+            with transaction.atomic():
+                user = get_user_model().objects.create_user(
+                    email=values["email"],
+                    password=values["initialPassword"],
+                    full_name=values["fullName"].strip(),
+                    employee_number=values["employeeNumber"],
+                    job_title=values.get("jobTitle", "").strip(),
+                    time_zone=values["timeZone"],
+                )
+                audit(request, "employeeCreated", user.pk)
+                response = success(request, profile(user), 201)
+                response["Location"] = "/api/v1/admin/employees/" + user.pk
+                return response
+
+        return idempotent(request, request.data, create)

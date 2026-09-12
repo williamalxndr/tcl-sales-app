@@ -35,6 +35,8 @@ class UserTests(TestCase):
 from django.test import override_settings
 from rest_framework.test import APIClient
 
+from apps.core.models import AuditLog
+
 from .models import AuthSession
 
 
@@ -185,3 +187,53 @@ class AuthenticationAPITests(TestCase):
             200,
         )
         self.assertEqual(client.cookies["sales_refresh"].value, "")
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class SuperadminEmployeeAPITests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_superuser(
+            "admin@example.test", "a-strong-admin-password"
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    def test_superadmin_creates_an_employee_account(self):
+        response = self.client.post(
+            "/api/v1/admin/employees",
+            {
+                "email": "new.employee@example.test",
+                "fullName": "New Employee",
+                "employeeNumber": "EMP-200",
+                "jobTitle": "Sales Executive",
+                "timeZone": "Asia/Jakarta",
+                "initialPassword": "a-strong-initial-password",
+            },
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="create-employee-0001",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        employee = get_user_model().objects.get(email="new.employee@example.test")
+        self.assertTrue(employee.check_password("a-strong-initial-password"))
+        self.assertNotIn("initialPassword", response.data["data"])
+        self.assertTrue(
+            AuditLog.objects.filter(
+                event="employeeCreated", resource_id=employee.pk
+            ).exists()
+        )
+
+    def test_regular_employee_cannot_create_accounts(self):
+        employee = get_user_model().objects.create_user("ordinary@example.test")
+        self.client.force_authenticate(employee)
+        response = self.client.post(
+            "/api/v1/admin/employees",
+            {
+                "email": "blocked@example.test",
+                "fullName": "Blocked",
+                "employeeNumber": "EMP-201",
+                "initialPassword": "a-strong-initial-password",
+            },
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="create-employee-0002",
+        )
+        self.assertEqual(response.status_code, 403)

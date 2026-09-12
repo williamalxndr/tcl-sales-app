@@ -14,3 +14,13 @@ review and must not rewrite historical submission snapshots.
   history, and attachment metadata, and voids every unfinished review task.
 - The rule applies to the current workflow policy. Existing signed snapshots are
   not rewritten.
+
+## Superadmin account management
+
+- Superadmin authority uses Django's separately provisioned `is_superuser`
+  capability; ordinary employee role grants never imply administration access.
+- Superadmins may create and maintain employee identities. Creation requires a
+  unique company email, employee number, and a password that passes Django's
+  configured password validators.
+- Administrative mutations are audited and use idempotency keys where they
+  create resources.
