@@ -36,8 +36,9 @@ from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.core.models import AuditLog
+from apps.programs.models import Location
 
-from .models import AuthSession
+from .models import AuthSession, UserRole
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -269,3 +270,28 @@ class SuperadminEmployeeAPITests(TestCase):
             format="json",
         )
         self.assertEqual(forbidden.status_code, 400)
+
+    def test_superadmin_replaces_role_and_location_grants(self):
+        employee = get_user_model().objects.create_user("grants@example.test")
+        old = Location.objects.create(code="OLD", name="Old")
+        current = Location.objects.create(code="CURRENT", name="Current")
+        employee.locations.add(old)
+        UserRole.objects.create(user=employee, role="submitter")
+
+        response = self.client.put(
+            f"/api/v1/admin/employees/{employee.pk}/access",
+            {"roles": ["checker", "approver"], "locationIds": [current.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["data"]["roles"], ["approver", "checker"])
+        self.assertEqual(response.data["data"]["locationIds"], [current.pk])
+        self.assertEqual(
+            set(employee.role_grants.values_list("role", flat=True)),
+            {"checker", "approver"},
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(
+                event="employeeAccessUpdated", resource_id=employee.pk
+            ).exists()
+        )

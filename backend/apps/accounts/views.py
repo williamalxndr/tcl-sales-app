@@ -15,6 +15,7 @@ from apps.core.services import DomainError, audit, digest, idempotent, rate_limi
 from .models import AuthSession, RefreshCredential
 from .serializers import (
     EmployeeCreateSerializer,
+    EmployeeAccessSerializer,
     EmployeeUpdateSerializer,
     LoginSerializer,
     RefreshSerializer,
@@ -287,5 +288,47 @@ class SuperadminEmployeeView(SuperadminEmployeesView):
                 "employeeProfileUpdated",
                 user.pk,
                 fields=sorted(form.validated_data),
+            )
+        return success(request, profile(user))
+
+
+class SuperadminEmployeeAccessView(SuperadminEmployeesView):
+    def put(self, request, employeeId):
+        if request.query_params:
+            raise DomainError("BAD_REQUEST", "Query parameters are not accepted.", 400)
+        form = EmployeeAccessSerializer(data=request.data)
+        form.is_valid(raise_exception=True)
+        from apps.programs.models import Location
+
+        location_ids = form.validated_data["locationIds"]
+        locations = list(Location.objects.filter(pk__in=location_ids, is_active=True))
+        if len(locations) != len(location_ids):
+            raise DomainError(
+                "VALIDATION_FAILED",
+                "Every location grant must reference an active location.",
+                422,
+            )
+        with transaction.atomic():
+            user = (
+                get_user_model().objects.select_for_update().filter(pk=employeeId).first()
+            )
+            if user is None:
+                raise DomainError("NOT_FOUND", "Employee not found.", 404)
+            from .models import UserRole
+
+            UserRole.objects.filter(user=user).delete()
+            UserRole.objects.bulk_create(
+                [
+                    UserRole(user=user, role=role)
+                    for role in form.validated_data["roles"]
+                ]
+            )
+            user.locations.set(locations)
+            audit(
+                request,
+                "employeeAccessUpdated",
+                user.pk,
+                roles=sorted(form.validated_data["roles"]),
+                locationIds=sorted(location_ids),
             )
         return success(request, profile(user))

@@ -4,6 +4,8 @@ from rest_framework import serializers
 
 from apps.core.serializers import StrictSerializer
 
+from .models import UserRole
+
 
 class LoginSerializer(StrictSerializer):
     email = serializers.EmailField(max_length=254)
@@ -90,6 +92,27 @@ class EmployeeUpdateSerializer(StrictSerializer):
         if not attrs:
             raise serializers.ValidationError("At least one field is required.")
         return attrs
+
+
+class EmployeeAccessSerializer(StrictSerializer):
+    roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=UserRole.ROLES),
+        allow_empty=True,
+        max_length=len(UserRole.ROLES),
+    )
+    locationIds = serializers.ListField(
+        child=serializers.CharField(max_length=64), allow_empty=True, max_length=100
+    )
+
+    def validate_roles(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("Role grants must be unique.")
+        return value
+
+    def validate_locationIds(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("Location grants must be unique.")
+        return value
 
 
 def profile(user):
