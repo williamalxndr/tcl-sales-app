@@ -115,6 +115,10 @@ class EmployeeAccessSerializer(StrictSerializer):
         return value
 
 
+class EmployeeCheckerSerializer(StrictSerializer):
+    checkerId = serializers.CharField(max_length=64, allow_null=True)
+
+
 def profile(user):
     return {
         "id": user.pk,

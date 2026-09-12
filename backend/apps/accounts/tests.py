@@ -338,3 +338,26 @@ class SuperadminEmployeeAPITests(TestCase):
                 event="employeeSignatureReplaced", resource_id=employee.pk
             ).exists()
         )
+
+    def test_superadmin_replaces_employee_checker_with_audit(self):
+        employee = get_user_model().objects.create_user("routed@example.test")
+        previous = get_user_model().objects.create_user("old.checker@example.test")
+        replacement = get_user_model().objects.create_user("checker@example.test")
+        UserRole.objects.create(user=previous, role="checker")
+        UserRole.objects.create(user=replacement, role="checker")
+        employee.checker = previous
+        employee.save()
+
+        response = self.client.put(
+            f"/api/v1/admin/employees/{employee.pk}/checker",
+            {"checkerId": replacement.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        employee.refresh_from_db()
+        self.assertEqual(employee.checker_id, replacement.pk)
+        log = AuditLog.objects.get(
+            event="employeeCheckerUpdated", resource_id=employee.pk
+        )
+        self.assertEqual(log.details["previousCheckerId"], previous.pk)
+        self.assertEqual(log.details["checkerId"], replacement.pk)

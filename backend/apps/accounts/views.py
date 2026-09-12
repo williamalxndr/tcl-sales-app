@@ -17,6 +17,7 @@ from apps.core.services import DomainError, audit, digest, idempotent, rate_limi
 from .models import AuthSession, RefreshCredential
 from .serializers import (
     EmployeeCreateSerializer,
+    EmployeeCheckerSerializer,
     EmployeeAccessSerializer,
     EmployeeUpdateSerializer,
     LoginSerializer,
@@ -393,3 +394,50 @@ class SuperadminEmployeeSignaturesView(SuperadminEmployeesView):
                 raise
 
         return idempotent(request, payload, create)
+
+
+class SuperadminEmployeeCheckerView(SuperadminEmployeesView):
+    def put(self, request, employeeId):
+        if request.query_params:
+            raise DomainError("BAD_REQUEST", "Query parameters are not accepted.", 400)
+        form = EmployeeCheckerSerializer(data=request.data)
+        form.is_valid(raise_exception=True)
+        checker_id = form.validated_data["checkerId"]
+        with transaction.atomic():
+            user = (
+                get_user_model().objects.select_for_update().filter(pk=employeeId).first()
+            )
+            if user is None:
+                raise DomainError("NOT_FOUND", "Employee not found.", 404)
+            if checker_id == user.pk:
+                raise DomainError(
+                    "VALIDATION_FAILED", "An employee cannot check their own work.", 422
+                )
+            checker = None
+            if checker_id is not None:
+                checker = (
+                    get_user_model()
+                    .objects.filter(
+                        pk=checker_id,
+                        is_active=True,
+                        role_grants__role="checker",
+                    )
+                    .first()
+                )
+                if checker is None:
+                    raise DomainError(
+                        "VALIDATION_FAILED",
+                        "Checker must reference an active employee with the checker role.",
+                        422,
+                    )
+            previous_id = user.checker_id
+            user.checker = checker
+            user.save(update_fields=["checker", "updated_at"])
+            audit(
+                request,
+                "employeeCheckerUpdated",
+                user.pk,
+                previousCheckerId=previous_id,
+                checkerId=checker_id,
+            )
+        return success(request, profile(user))
