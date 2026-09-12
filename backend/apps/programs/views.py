@@ -1,5 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
 from django.db.models import Q
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -326,3 +329,59 @@ class ReassignReviewTaskView(AuthenticatedView):
             return program_response(request, program)
 
         return idempotent(request, request.data, change)
+
+
+class DashboardSummaryView(AuthenticatedView):
+    def get(self, request):
+        check_query(request, ["dateFrom", "dateTo"])
+        local_today = datetime.now(ZoneInfo("Asia/Jakarta")).date()
+        try:
+            date_from = date.fromisoformat(
+                request.query_params.get("dateFrom", str(local_today - timedelta(days=29)))
+            )
+            date_to = date.fromisoformat(
+                request.query_params.get("dateTo", str(local_today))
+            )
+        except ValueError:
+            raise DomainError("VALIDATION_FAILED", "Dashboard dates are invalid.", 422)
+        if date_from > date_to or (date_to - date_from).days > 365:
+            raise DomainError(
+                "VALIDATION_FAILED",
+                "Dashboard period must be ordered and no longer than 366 days.",
+                422,
+            )
+        zone = ZoneInfo("Asia/Jakarta")
+        start = datetime.combine(date_from, time.min, tzinfo=zone)
+        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=zone)
+        owned = Program.objects.filter(owner=request.user)
+        submitted = owned.filter(submitted_at__gte=start, submitted_at__lt=end)
+        assigned = ReviewTask.objects.filter(reviewer=request.user)
+        decided = assigned.filter(decided_at__gte=start, decided_at__lt=end)
+        return success(
+            request,
+            {
+                "period": {
+                    "dateFrom": str(date_from),
+                    "dateTo": str(date_to),
+                    "timeZone": "Asia/Jakarta",
+                },
+                "submissions": {
+                    "draft": owned.filter(status="draft").count(),
+                    "inReview": submitted.filter(
+                        status__in=[
+                            "pendingChecker",
+                            "pendingAcknowledgement",
+                            "pendingApproval",
+                        ]
+                    ).count(),
+                    "approved": submitted.filter(status="approved").count(),
+                    "rejected": submitted.filter(status="rejected").count(),
+                    "cancelled": submitted.filter(status="cancelled").count(),
+                },
+                "reviews": {
+                    "ready": assigned.filter(status="ready").count(),
+                    "approved": decided.filter(status="approved").count(),
+                    "rejected": decided.filter(status="rejected").count(),
+                },
+            },
+        )

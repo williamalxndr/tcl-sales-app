@@ -12,6 +12,7 @@ urlpatterns = [
     path("api/v1/auth/refresh", accounts.RefreshView.as_view()),
     path("api/v1/auth/logout", accounts.LogoutView.as_view()),
     path("api/v1/users/me", accounts.ProfileView.as_view()),
+    path("api/v1/dashboard/summary", programs.DashboardSummaryView.as_view()),
     path("api/v1/admin/employees", accounts.SuperadminEmployeesView.as_view()),
     path(
         "api/v1/admin/employees/<str:employeeId>",

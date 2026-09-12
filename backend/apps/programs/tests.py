@@ -457,6 +457,28 @@ class ProgramAPITests(TestCase):
         self.assertEqual(log.details["previousReviewerId"], self.ack2.pk)
         self.assertEqual(log.details["reviewerId"], replacement.pk)
 
+    def test_dashboard_summary_is_personal_and_uses_release_metrics(self):
+        data = self.submit(self.create())
+        owner_summary = self.client.get("/api/v1/dashboard/summary")
+        self.assertEqual(owner_summary.status_code, 200, owner_summary.data)
+        self.assertEqual(owner_summary.data["data"]["submissions"]["inReview"], 1)
+        self.assertEqual(owner_summary.data["data"]["reviews"]["ready"], 0)
+
+        checker_summary = self.client_for(self.checker).get(
+            "/api/v1/dashboard/summary"
+        )
+        self.assertEqual(checker_summary.status_code, 200, checker_summary.data)
+        self.assertEqual(
+            checker_summary.data["data"]["submissions"]["inReview"], 0
+        )
+        self.assertEqual(checker_summary.data["data"]["reviews"]["ready"], 1)
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/dashboard/summary?dateFrom=2025-01-01&dateTo=2026-12-31"
+            ).status_code,
+            422,
+        )
+
     def pdf_bytes(self):
         output = io.BytesIO()
         document = canvas.Canvas(output)
