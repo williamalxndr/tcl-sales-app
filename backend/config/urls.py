@@ -86,6 +86,10 @@ urlpatterns = [
         programs.RejectView.as_view(),
     ),
     path(
+        "api/v1/backoffice/program-submissions/<str:submissionId>/review-tasks/<str:taskId>/delegate",
+        programs.DelegateReviewTaskView.as_view(),
+    ),
+    path(
         "api/v1/backoffice/program-submissions/<str:submissionId>/pdf",
         pdf.BackofficePdfView.as_view(),
     ),

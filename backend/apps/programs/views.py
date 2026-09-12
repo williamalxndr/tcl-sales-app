@@ -18,7 +18,12 @@ from .selectors import (
     roles,
     scoped,
 )
-from .serializers import CancellationSerializer, DecisionSerializer, DraftSerializer
+from .serializers import (
+    CancellationSerializer,
+    DecisionSerializer,
+    DraftSerializer,
+    ReviewerAssignmentSerializer,
+)
 
 
 def program_response(request, program, status=200):
@@ -267,3 +272,21 @@ class DecisionView(AuthenticatedView):
 
 class RejectView(DecisionView):
     action = "reject"
+
+
+class DelegateReviewTaskView(AuthenticatedView):
+    def post(self, request, submissionId, taskId):
+        check_query(request, [])
+        form = ReviewerAssignmentSerializer(data=request.data)
+        form.is_valid(raise_exception=True)
+        get_program(request.user, submissionId, "visible")
+
+        def change():
+            program = get_program(request.user, submissionId, "visible", lock=True)
+            version_match(request, program)
+            svc.delegate_task(
+                request, program, taskId, form.validated_data["reviewerId"]
+            )
+            return program_response(request, program)
+
+        return idempotent(request, request.data, change)

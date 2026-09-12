@@ -379,6 +379,28 @@ class ProgramAPITests(TestCase):
             409,
         )
 
+    def test_ready_reviewer_can_delegate_to_same_role_with_audit(self):
+        delegate = self.employee("delegate-checker", "checker")
+        data = self.submit(self.create())
+        task = ReviewTask.objects.get(program_id=data["id"], stage="checker")
+        client = self.client_for(self.checker)
+        response = client.post(
+            f"/api/v1/backoffice/program-submissions/{data['id']}"
+            f"/review-tasks/{task.pk}/delegate",
+            {"reviewerId": delegate.pk},
+            format="json",
+            **self.headers(data["version"]),
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        task.refresh_from_db()
+        self.assertEqual(task.reviewer_id, delegate.pk)
+        self.assertEqual(task.reviewer_snapshot["fullName"], delegate.full_name)
+        log = AuditLog.objects.get(
+            event="reviewTaskDelegated", resource_id=data["id"]
+        )
+        self.assertEqual(log.details["previousReviewerId"], self.checker.pk)
+        self.assertEqual(log.details["reviewerId"], delegate.pk)
+
     def pdf_bytes(self):
         output = io.BytesIO()
         document = canvas.Canvas(output)

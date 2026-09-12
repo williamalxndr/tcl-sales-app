@@ -45,3 +45,7 @@ class DecisionSerializer(StrictSerializer):
 
 class CancellationSerializer(StrictSerializer):
     reason = serializers.CharField(max_length=2000)
+
+
+class ReviewerAssignmentSerializer(StrictSerializer):
+    reviewerId = serializers.CharField(max_length=64)

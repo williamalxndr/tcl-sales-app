@@ -27,3 +27,12 @@ review and must not rewrite historical submission snapshots.
 - Signature replacement creates a new normalized private PNG version and only
   moves the employee's current pointer. Historical signature rows and signed
   submission/task references are immutable.
+
+## Review task delegation
+
+- Only the current assignee may delegate a `ready` task.
+- The replacement must be another active employee with the matching stage role;
+  Mengetahui and Menyetujui replacements must also be eligible for the proposer.
+- Delegation cannot introduce self-approval or give one employee multiple tasks
+  in the same submission. The task remains ready and every assignment change is
+  recorded in the audit log.

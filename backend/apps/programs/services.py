@@ -305,6 +305,7 @@ def detail(program, user):
         if not issues:
             actions.append("submit")
     if any(t.pk in result["myActiveTaskIds"] for t in tasks):
+        actions.append("delegate")
         p = program.policy_snapshot
         can_sign = p.get("requireSignature") is False or bool(user.signature_id)
         if can_sign and (
@@ -597,3 +598,58 @@ def cancel(request, program, reason):
     program.version += 1
     program.save()
     audit(request, "cancelled", program.pk, version=program.version)
+
+
+def delegate_task(request, program, task_id, reviewer_id):
+    task = program.review_tasks.filter(pk=task_id, reviewer=request.user).first()
+    if task is None:
+        raise DomainError("NOT_FOUND", "Review task not found.", 404)
+    if task.status != "ready":
+        raise DomainError("TASK_NOT_READY", "Only a ready task can be delegated.")
+    required_role = ROLE_FOR_STAGE[task.stage]
+    reviewer = (
+        get_user_model()
+        .objects.filter(
+            pk=reviewer_id, is_active=True, role_grants__role=required_role
+        )
+        .first()
+    )
+    if reviewer is None or reviewer.pk == request.user.pk:
+        raise DomainError(
+            "VALIDATION_FAILED",
+            "Delegate must be another active employee with the required role.",
+            422,
+        )
+    if reviewer.pk == program.owner_id and program.policy_snapshot.get(
+        "allowSelfApproval"
+    ) is not True:
+        raise DomainError("FORBIDDEN", "Self-approval is not authorized.", 403)
+    if task.stage != "checker" and not ReviewerEligibility.objects.filter(
+        employee_id=program.owner_id,
+        reviewer=reviewer,
+        stage=task.stage,
+    ).exists():
+        raise DomainError(
+            "VALIDATION_FAILED", "Delegate is not eligible for this employee.", 422
+        )
+    if program.review_tasks.exclude(pk=task.pk).filter(reviewer=reviewer).exists():
+        raise DomainError(
+            "VALIDATION_FAILED",
+            "The delegate already has a task in this submission.",
+            422,
+        )
+    previous_id = task.reviewer_id
+    task.reviewer = reviewer
+    task.reviewer_snapshot = person(reviewer)
+    task.save(update_fields=["reviewer", "reviewer_snapshot"])
+    program.version += 1
+    program.save(update_fields=["version", "updated_at"])
+    audit(
+        request,
+        "reviewTaskDelegated",
+        program.pk,
+        taskId=task.pk,
+        previousReviewerId=previous_id,
+        reviewerId=reviewer.pk,
+        version=program.version,
+    )
