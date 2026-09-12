@@ -3353,6 +3353,310 @@ paths:
           $ref: '#/components/responses/405'
         '406':
           $ref: '#/components/responses/406'
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [Dashboard]
+      summary: Read personal submission and review metrics.
+      x-allowed-roles: Any active authenticated role
+      parameters:
+      - name: dateFrom
+        in: query
+        schema: {type: string, format: date}
+      - name: dateTo
+        in: query
+        schema: {type: string, format: date}
+      responses:
+        '200':
+          description: Personal metrics for the selected inclusive period.
+          content:
+            application/json:
+              schema: {type: object}
+        '401': {$ref: '#/components/responses/401'}
+        '422': {$ref: '#/components/responses/422'}
+  /admin/employees:
+    post:
+      operationId: createEmployee
+      tags: [Administration]
+      summary: Create an employee account.
+      x-allowed-roles: Provisioned superadmin only
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema: {type: string, minLength: 16, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, fullName, employeeNumber, initialPassword]
+              properties:
+                email: {type: string, format: email, maxLength: 254}
+                fullName: {type: string, minLength: 1, maxLength: 150}
+                employeeNumber: {type: string, minLength: 1, maxLength: 50}
+                jobTitle: {type: string, maxLength: 150}
+                timeZone: {type: string, maxLength: 64, default: Asia/Jakarta}
+                initialPassword: {type: string, maxLength: 128, writeOnly: true}
+      responses:
+        '201':
+          description: Employee account created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserResponse'}
+        '400': {$ref: '#/components/responses/400'}
+        '403': {$ref: '#/components/responses/403'}
+        '422': {$ref: '#/components/responses/422'}
+  /admin/employees/{employeeId}:
+    patch:
+      operationId: updateEmployeeProfile
+      tags: [Administration]
+      summary: Update employee identity and active status.
+      x-allowed-roles: Provisioned superadmin only
+      parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                email: {type: string, format: email, maxLength: 254}
+                fullName: {type: string, minLength: 1, maxLength: 150}
+                employeeNumber: {type: string, minLength: 1, maxLength: 50}
+                jobTitle: {type: string, maxLength: 150}
+                timeZone: {type: string, maxLength: 64}
+                isActive: {type: boolean}
+      responses:
+        '200':
+          description: Employee profile updated.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserResponse'}
+        '403': {$ref: '#/components/responses/403'}
+        '404': {$ref: '#/components/responses/404'}
+        '422': {$ref: '#/components/responses/422'}
+  /admin/employees/{employeeId}/access:
+    put:
+      operationId: replaceEmployeeAccess
+      tags: [Administration]
+      summary: Replace employee role and location grants.
+      x-allowed-roles: Provisioned superadmin only
+      parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [roles, locationIds]
+              properties:
+                roles:
+                  type: array
+                  uniqueItems: true
+                  items: {$ref: '#/components/schemas/Role'}
+                locationIds:
+                  type: array
+                  uniqueItems: true
+                  maxItems: 100
+                  items: {$ref: '#/components/schemas/Id'}
+      responses:
+        '200':
+          description: Employee access grants replaced.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserResponse'}
+        '403': {$ref: '#/components/responses/403'}
+        '404': {$ref: '#/components/responses/404'}
+        '422': {$ref: '#/components/responses/422'}
+  /admin/employees/{employeeId}/signatures:
+    post:
+      operationId: createEmployeeSignatureVersion
+      tags: [Administration]
+      summary: Create and select a new immutable signature version.
+      x-allowed-roles: Provisioned superadmin only
+      parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema: {type: string, minLength: 16, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: {$ref: '#/components/schemas/MultipartUpload'}
+      responses:
+        '201':
+          description: New current signature version created.
+          content:
+            application/json:
+              schema: {type: object}
+        '403': {$ref: '#/components/responses/403'}
+        '404': {$ref: '#/components/responses/404'}
+        '413': {$ref: '#/components/responses/413'}
+        '415': {$ref: '#/components/responses/415'}
+  /admin/employees/{employeeId}/checker:
+    put:
+      operationId: replaceEmployeeChecker
+      tags: [Administration]
+      summary: Replace or clear an employee's Checker.
+      x-allowed-roles: Provisioned superadmin only
+      parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [checkerId]
+              properties:
+                checkerId:
+                  anyOf:
+                  - {$ref: '#/components/schemas/Id'}
+                  - {type: 'null'}
+      responses:
+        '200':
+          description: Checker assignment updated.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserResponse'}
+        '403': {$ref: '#/components/responses/403'}
+        '404': {$ref: '#/components/responses/404'}
+        '422': {$ref: '#/components/responses/422'}
+  /program-submissions/{submissionId}/revisions:
+    post:
+      operationId: createSubmissionRevision
+      tags: [Program submissions]
+      summary: Create a linked draft from a rejected submission.
+      x-allowed-roles: Submitter who owns the rejected submission
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema: {type: string, minLength: 16, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EmptyRequest'}
+      responses:
+        '201':
+          description: Linked revision draft created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SubmissionResponse'}
+        '404': {$ref: '#/components/responses/404'}
+        '409': {$ref: '#/components/responses/409'}
+  /backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/delegate:
+    post:
+      operationId: delegateReviewTask
+      tags: [Backoffice]
+      summary: Delegate the current ready task to an eligible peer.
+      x-allowed-roles: Current ready task assignee
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      - name: taskId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      - name: If-Match
+        in: header
+        required: true
+        schema: {type: string}
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema: {type: string, minLength: 16, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reviewerId]
+              properties:
+                reviewerId: {$ref: '#/components/schemas/Id'}
+      responses:
+        '200':
+          description: Review task delegated.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SubmissionResponse'}
+        '403': {$ref: '#/components/responses/403'}
+        '404': {$ref: '#/components/responses/404'}
+        '422': {$ref: '#/components/responses/422'}
+  /admin/program-submissions/{submissionId}/review-tasks/{taskId}/reassign:
+    post:
+      operationId: reassignReviewTask
+      tags: [Administration]
+      summary: Reassign an undecided review task.
+      x-allowed-roles: Provisioned superadmin only
+      parameters:
+      - name: submissionId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      - name: taskId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+      - name: If-Match
+        in: header
+        required: true
+        schema: {type: string}
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema: {type: string, minLength: 16, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reviewerId]
+              properties:
+                reviewerId: {$ref: '#/components/schemas/Id'}
+      responses:
+        '200':
+          description: Review task reassigned.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SubmissionResponse'}
+        '403': {$ref: '#/components/responses/403'}
+        '404': {$ref: '#/components/responses/404'}
+        '422': {$ref: '#/components/responses/422'}
   /health/live:
     get:
       operationId: healthLive
@@ -3951,6 +4255,10 @@ components:
         version:
           type: integer
           minimum: 1
+        revisedFromId:
+          anyOf:
+          - $ref: '#/components/schemas/Id'
+          - type: 'null'
         myActiveTaskIds:
           type: array
           items:
@@ -4029,6 +4337,10 @@ components:
         version:
           type: integer
           minimum: 1
+        revisedFromId:
+          anyOf:
+          - $ref: '#/components/schemas/Id'
+          - type: 'null'
         myActiveTaskIds:
           type: array
           items:
@@ -4055,6 +4367,8 @@ components:
             - approve
             - reject
             - cancel
+            - delegate
+            - createRevision
             - downloadPdf
           uniqueItems: true
         submissionIssues:
@@ -4919,7 +5233,7 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
 x-deferred-features:
-- Public registration; future superadmin account management.
-- Dashboard, reporting, revision and delegated approval flows.
-- Password recovery/change and employee signature replacement UI.
-- Cancellation states, missing type/cost requirements and upload retention need business confirmation.
+- Public registration and password recovery/change.
+- Company-wide reporting and export APIs beyond the personal dashboard.
+- Administrative Flutter screens for account and workflow management.
+- Aggregate upload quotas and production scheduling of retention commands.

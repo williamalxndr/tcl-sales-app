@@ -1,6 +1,6 @@
 # Sales Program Submission API Design
 
-Status: **implemented development backend**, contract revision 0.3.0, 2026-09-09. Stack: Flutter across supported mobile/web/desktop targets, Django REST Framework, MySQL 8.4. This backend phase leaves Flutter unchanged. The complete executable contract is [openapi.yaml](openapi.yaml); local startup, account provisioning and verification are in [BACKEND.md](BACKEND.md). Cancellation is implemented behind an unconfigured policy gate, not silently enabled.
+Status: **implemented development backend**, contract revision 0.4.0, 2026-09-13. Stack: Flutter across supported mobile/web/desktop targets, Django REST Framework, MySQL 8.4. The complete executable contract is [openapi.yaml](openapi.yaml); local startup, account provisioning and verification are in [BACKEND.md](BACKEND.md). Pre-decision cancellation, superadmin employee management, workflow assignment changes, linked revisions, a personal dashboard, and bounded retention commands are implemented.
 
 ## Evidence and confirmed scope
 
@@ -2485,6 +2485,57 @@ These schemas are implemented in `openapi.yaml`. Required means required in the 
 | `totalItems` | yes | integer; minimum=0 |
 | `totalPages` | yes | integer; minimum=0 |
 | `hasNextPage` | yes | boolean |
+
+## Phase 4 management and dashboard operations
+
+#### `GET /api/v1/dashboard/summary`
+
+Returns personal submission counts and assigned-review counts for the inclusive
+requested period, defaulting to the trailing 30 days in `Asia/Jakarta`. It never
+grants company-wide visibility, including to a superadmin.
+
+#### `POST /api/v1/admin/employees`
+
+Creates one employee identity for a provisioned Django superuser. The password
+passes configured validators, the request is idempotent, and secret input is
+never returned.
+
+#### `PATCH /api/v1/admin/employees/{employeeId}`
+
+Updates identity, job, time-zone, or active-state fields. Role, location,
+Checker, and signature changes use their dedicated operations.
+
+#### `PUT /api/v1/admin/employees/{employeeId}/access`
+
+Atomically replaces role and active-location grants for one employee and audits
+the resulting grant sets.
+
+#### `POST /api/v1/admin/employees/{employeeId}/signatures`
+
+Accepts one PNG/JPEG signature, validates and normalizes it to a private PNG,
+creates an immutable version, and moves only the employee's current pointer.
+Historical program and task signature references remain unchanged.
+
+#### `PUT /api/v1/admin/employees/{employeeId}/checker`
+
+Replaces or clears the fixed Checker relation. A selected Checker must be active,
+carry the Checker role, and cannot be the employee themself.
+
+#### `POST /api/v1/program-submissions/{submissionId}/revisions`
+
+Creates one linked successor draft for an owned rejected submission. It copies
+editable values and still-eligible routing, but never copies tasks, decisions,
+attachments, signatures, or snapshots.
+
+#### `POST /api/v1/backoffice/program-submissions/{submissionId}/review-tasks/{taskId}/delegate`
+
+Allows the current assignee to delegate a ready task to another eligible peer.
+If-Match and Idempotency-Key protect the audited parent-version mutation.
+
+#### `POST /api/v1/admin/program-submissions/{submissionId}/review-tasks/{taskId}/reassign`
+
+Allows a provisioned superadmin to reassign a waiting or ready task under the
+same role, eligibility, self-approval, and duplicate-assignment rules.
 
 ## Security, uploads, signatures and audit
 
