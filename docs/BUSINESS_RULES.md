@@ -68,3 +68,19 @@ review and must not rewrite historical submission snapshots.
   `approved` and `rejected` assignments decided in the selected period.
 - The default period is the trailing 30 calendar days in `Asia/Jakarta`.
   Explicit inclusive `dateFrom` and `dateTo` values may cover at most 366 days.
+
+## Data retention
+
+- Bytes for soft-removed attachments are retained for 30 days for operational
+  recovery, then deleted with their metadata. Attachments on terminal submissions
+  are retained for seven years from `closedAt`, then deleted. Files belonging to
+  active submissions are not age-purged.
+- PDFs are generated on demand and are not application records. They are never
+  persisted by the API; any unexpected operational spool artifact is limited to
+  24 hours.
+- Audit logs are retained for seven years from `occurredAt`, then deleted in
+  bounded batches. Application records and immutable signature versions are not
+  included in these automated jobs.
+- Retention commands run in dry-run mode unless an operator supplies an explicit
+  confirmation flag. Production scheduling is daily and must record command
+  output in the platform's operational logs.
