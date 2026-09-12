@@ -55,3 +55,16 @@ review and must not rewrite historical submission snapshots.
   duplicate-assignment rules as delegation.
 - Reassignment keeps the task stage and readiness state, increments the parent
   version, and records both assignees in the audit log.
+
+## Dashboard metrics
+
+- The first dashboard is personal, not company-wide. Every authenticated user
+  sees only submissions they own and review tasks assigned to them; superadmin
+  status does not widen dashboard data access.
+- Submission cards report `draft`, `inReview`, `approved`, `rejected`, and
+  `cancelled` counts. Non-draft counts use `submittedAt` as their date basis;
+  drafts are a current snapshot.
+- Reviewer cards report the current number of `ready` assignments plus
+  `approved` and `rejected` assignments decided in the selected period.
+- The default period is the trailing 30 calendar days in `Asia/Jakarta`.
+  Explicit inclusive `dateFrom` and `dateTo` values may cover at most 366 days.
