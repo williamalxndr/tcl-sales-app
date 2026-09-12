@@ -110,3 +110,7 @@ after reviewing its count, for example `python manage.py purge_attachments`
 followed by `python manage.py purge_attachments --confirm`. Each confirmed run is
 bounded to 500 records unless `--batch-size` is supplied and records a summary
 audit event.
+
+The API renders PDFs in memory and does not create a spool. As defense in depth,
+`python manage.py purge_pdf_spool` reports stale `.pdf` files under the private
+`pdf-spool/` directory; `--confirm` removes only files older than 24 hours.

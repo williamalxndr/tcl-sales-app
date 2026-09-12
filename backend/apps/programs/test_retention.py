@@ -1,4 +1,5 @@
 import tempfile
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -44,3 +45,28 @@ class AttachmentRetentionTests(TestCase):
         self.assertFalse(
             Path(self.files.name, self.attachment.storage_key).exists()
         )
+
+
+class PdfRetentionTests(TestCase):
+    def setUp(self):
+        self.files = tempfile.TemporaryDirectory()
+        self.addCleanup(self.files.cleanup)
+        self.media = override_settings(MEDIA_ROOT=self.files.name)
+        self.media.enable()
+        self.addCleanup(self.media.disable)
+
+    def test_only_expired_pdf_spool_files_are_deleted_after_confirmation(self):
+        spool = Path(self.files.name, "pdf-spool")
+        spool.mkdir()
+        expired = spool / "expired.pdf"
+        recent = spool / "recent.pdf"
+        expired.write_bytes(b"expired")
+        recent.write_bytes(b"recent")
+        old = (timezone.now() - timedelta(hours=25)).timestamp()
+        os.utime(expired, (old, old))
+
+        call_command("purge_pdf_spool")
+        self.assertTrue(expired.exists())
+        call_command("purge_pdf_spool", confirm=True)
+        self.assertFalse(expired.exists())
+        self.assertTrue(recent.exists())
