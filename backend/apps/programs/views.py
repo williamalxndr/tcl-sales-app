@@ -250,6 +250,21 @@ class CancelView(AuthenticatedView):
         return idempotent(request, request.data, change)
 
 
+class RevisionView(AuthenticatedView):
+    def post(self, request, submissionId):
+        check_query(request, [])
+        form = StrictSerializer(data=request.data)
+        form.is_valid(raise_exception=True)
+        get_program(request.user, submissionId)
+
+        def change():
+            source = get_program(request.user, submissionId, lock=True)
+            revision = svc.create_revision(request, source)
+            return program_response(request, revision, 201)
+
+        return idempotent(request, request.data, change)
+
+
 class DecisionView(AuthenticatedView):
     action = "approve"
 

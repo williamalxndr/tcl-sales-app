@@ -36,3 +36,13 @@ review and must not rewrite historical submission snapshots.
 - Delegation cannot introduce self-approval or give one employee multiple tasks
   in the same submission. The task remains ready and every assignment change is
   recorded in the audit log.
+
+## Revisions after rejection
+
+- Rejection remains terminal and its submitted record is never reopened in
+  place. The proposer may create one linked successor draft.
+- The successor copies editable program fields, locations, and reviewers that
+  are still eligible. Attachments, task decisions, signatures, and snapshots do
+  not carry over.
+- The new draft receives a new program number and takes a fresh policy, identity,
+  routing, and signature snapshot when it is submitted.

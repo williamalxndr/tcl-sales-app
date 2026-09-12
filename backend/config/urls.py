@@ -52,6 +52,10 @@ urlpatterns = [
         "api/v1/program-submissions/<str:submissionId>/cancel",
         programs.CancelView.as_view(),
     ),
+    path(
+        "api/v1/program-submissions/<str:submissionId>/revisions",
+        programs.RevisionView.as_view(),
+    ),
     path("api/v1/program-submissions/<str:submissionId>/pdf", pdf.PdfView.as_view()),
     path(
         "api/v1/program-submissions/<str:submissionId>/attachments",

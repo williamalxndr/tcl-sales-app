@@ -401,6 +401,31 @@ class ProgramAPITests(TestCase):
         self.assertEqual(log.details["previousReviewerId"], self.checker.pk)
         self.assertEqual(log.details["reviewerId"], delegate.pk)
 
+    def test_rejected_submission_creates_one_fresh_linked_revision(self):
+        rejected = self.decide(self.submit(self.create()), self.checker, "reject")
+        response = self.client.post(
+            f"/api/v1/program-submissions/{rejected['id']}/revisions",
+            {},
+            format="json",
+            **self.headers(),
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        revision = Program.objects.get(pk=response.data["data"]["id"])
+        self.assertEqual(revision.status, "draft")
+        self.assertEqual(revision.revised_from_id, rejected["id"])
+        self.assertEqual(revision.program_name, "September promotion")
+        self.assertEqual(revision.snapshot, {})
+        self.assertEqual(revision.policy_snapshot, {})
+        self.assertEqual(revision.attachments.count(), 0)
+        self.assertEqual(revision.draft_reviewers.count(), 3)
+        duplicate = self.client.post(
+            f"/api/v1/program-submissions/{rejected['id']}/revisions",
+            {},
+            format="json",
+            **self.headers(),
+        )
+        self.assertEqual(duplicate.status_code, 409)
+
     def pdf_bytes(self):
         output = io.BytesIO()
         document = canvas.Canvas(output)

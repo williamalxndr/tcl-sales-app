@@ -285,6 +285,7 @@ def summary(program, user):
         "updatedAt": iso(program.updated_at),
         "submittedAt": iso(program.submitted_at),
         "version": program.version,
+        "revisedFromId": program.revised_from_id,
         "myActiveTaskIds": active,
     }
 
@@ -316,6 +317,8 @@ def detail(program, user):
             actions.append("reject")
     if user.pk == program.owner_id and program.status in policy().cancellation_states:
         actions.append("cancel")
+    if user.pk == program.owner_id and program.status == "rejected":
+        actions.append("createRevision")
     result.update(
         reviewPlan=review_plan(program),
         reviewTasks=[
@@ -420,18 +423,67 @@ def save_fields(program, data):
     program.save()
 
 
-def create_program(request, data):
+def next_program_number():
     year = datetime.now(ZoneInfo("Asia/Jakarta")).year
     counter, _ = ProgramCounter.objects.get_or_create(year=year)
     counter = ProgramCounter.objects.select_for_update().get(pk=year)
     counter.value += 1
     counter.save()
+    return f"PRG-{year}-{counter.value:04d}"
+
+
+def create_program(request, data):
     program = Program.objects.create(
-        owner=request.user, program_number=f"PRG-{year}-{counter.value:04d}"
+        owner=request.user, program_number=next_program_number()
     )
     save_fields(program, data)
     audit(request, "draftCreated", program.pk, version=program.version)
     return program
+
+
+def create_revision(request, source):
+    if source.owner_id != request.user.pk:
+        raise DomainError("FORBIDDEN", "Only the proposer can create a revision.", 403)
+    if source.status != "rejected":
+        raise DomainError(
+            "INVALID_TRANSITION", "Only a rejected submission can be revised."
+        )
+    if Program.objects.filter(revised_from=source).exists():
+        raise DomainError(
+            "REVISION_EXISTS", "A revision already exists for this submission."
+        )
+    revision = Program.objects.create(
+        owner=source.owner,
+        revised_from=source,
+        program_number=next_program_number(),
+        program_name=source.program_name,
+        program_type=source.program_type,
+        period_start=source.period_start,
+        period_end=source.period_end,
+        estimated_cost=source.estimated_cost,
+    )
+    revision.locations.set(source.locations.all())
+    candidates = []
+    for task in source.review_tasks.select_related("reviewer").exclude(stage="checker"):
+        reviewer = task.reviewer
+        if reviewer.is_active and eligible(source.owner, reviewer, task.stage):
+            candidates.append(
+                DraftReviewer(
+                    program=revision,
+                    reviewer=reviewer,
+                    stage=task.stage,
+                    position=task.position,
+                )
+            )
+    DraftReviewer.objects.bulk_create(candidates)
+    audit(
+        request,
+        "submissionRevisionCreated",
+        revision.pk,
+        revisedFromId=source.pk,
+        version=revision.version,
+    )
+    return revision
 
 
 def activate_stage(program, stage):

@@ -114,6 +114,13 @@ class Program(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="programs"
     )
+    revised_from = models.OneToOneField(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="revision",
+    )
     program_name = models.CharField(max_length=200, null=True, blank=True)
     program_type = models.ForeignKey(ProgramType, null=True, on_delete=models.PROTECT)
     locations = models.ManyToManyField(Location)
