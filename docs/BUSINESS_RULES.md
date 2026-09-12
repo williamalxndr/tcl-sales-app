@@ -24,3 +24,6 @@ review and must not rewrite historical submission snapshots.
   configured password validators.
 - Administrative mutations are audited and use idempotency keys where they
   create resources.
+- Signature replacement creates a new normalized private PNG version and only
+  moves the employee's current pointer. Historical signature rows and signed
+  submission/task references are immutable.

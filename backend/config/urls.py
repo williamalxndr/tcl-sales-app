@@ -21,6 +21,10 @@ urlpatterns = [
         "api/v1/admin/employees/<str:employeeId>/access",
         accounts.SuperadminEmployeeAccessView.as_view(),
     ),
+    path(
+        "api/v1/admin/employees/<str:employeeId>/signatures",
+        accounts.SuperadminEmployeeSignaturesView.as_view(),
+    ),
     path("api/v1/master-data/locations", programs.LocationsView.as_view()),
     path("api/v1/master-data/program-types", programs.ProgramTypesView.as_view()),
     path("api/v1/program-submissions", programs.OwnProgramsView.as_view()),

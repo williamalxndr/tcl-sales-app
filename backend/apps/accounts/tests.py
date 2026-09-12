@@ -1,6 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+import io
+from tempfile import TemporaryDirectory
+
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from PIL import Image
 
 
 class UserTests(TestCase):
@@ -38,7 +43,7 @@ from rest_framework.test import APIClient
 from apps.core.models import AuditLog
 from apps.programs.models import Location
 
-from .models import AuthSession, UserRole
+from .models import AccountSignature, AuthSession, UserRole
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -198,6 +203,11 @@ class SuperadminEmployeeAPITests(TestCase):
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
+        self.media = TemporaryDirectory()
+        media_settings = self.settings(MEDIA_ROOT=self.media.name)
+        media_settings.enable()
+        self.addCleanup(media_settings.disable)
+        self.addCleanup(self.media.cleanup)
 
     def test_superadmin_creates_an_employee_account(self):
         response = self.client.post(
@@ -293,5 +303,38 @@ class SuperadminEmployeeAPITests(TestCase):
         self.assertTrue(
             AuditLog.objects.filter(
                 event="employeeAccessUpdated", resource_id=employee.pk
+            ).exists()
+        )
+
+    def test_superadmin_adds_an_immutable_signature_version(self):
+        employee = get_user_model().objects.create_user("signer@example.test")
+        old = AccountSignature.objects.create(
+            user=employee,
+            storage_key="signatures/historical.png",
+            sha256="0" * 64,
+        )
+        employee.signature = old
+        employee.save()
+        stream = io.BytesIO()
+        Image.new("RGB", (120, 40), "white").save(stream, format="JPEG")
+
+        response = self.client.post(
+            f"/api/v1/admin/employees/{employee.pk}/signatures",
+            {
+                "file": SimpleUploadedFile(
+                    "signature.jpg", stream.getvalue(), content_type="image/jpeg"
+                )
+            },
+            format="multipart",
+            HTTP_IDEMPOTENCY_KEY="replace-signature-0001",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        employee.refresh_from_db()
+        self.assertNotEqual(employee.signature_id, old.pk)
+        self.assertTrue(AccountSignature.objects.filter(pk=old.pk).exists())
+        self.assertEqual(AccountSignature.objects.filter(user=employee).count(), 2)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                event="employeeSignatureReplaced", resource_id=employee.pk
             ).exists()
         )

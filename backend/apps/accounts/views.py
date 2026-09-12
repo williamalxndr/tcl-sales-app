@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 from datetime import timedelta
 
@@ -7,6 +8,7 @@ from django.db import transaction
 from django.middleware.csrf import CsrfViewMiddleware, get_token, rotate_token
 from django.utils import timezone
 from rest_framework.permissions import AllowAny
+from rest_framework.parsers import MultiPartParser
 from rest_framework.views import APIView
 
 from apps.core.api import success
@@ -332,3 +334,62 @@ class SuperadminEmployeeAccessView(SuperadminEmployeesView):
                 locationIds=sorted(location_ids),
             )
         return success(request, profile(user))
+
+
+class SuperadminEmployeeSignaturesView(SuperadminEmployeesView):
+    parser_classes = [MultiPartParser]
+
+    def post(self, request, employeeId):
+        if request.query_params or set(request.data) != {"file"}:
+            raise DomainError(
+                "BAD_REQUEST", "Provide exactly one multipart file field.", 400
+            )
+        uploaded = request.FILES.get("file")
+        if uploaded is None:
+            raise DomainError("BAD_REQUEST", "A signature file is required.", 400)
+        from .signatures import normalize_signature, write_signature_version
+
+        content = normalize_signature(uploaded.read(2_000_001))
+        payload = {"sha256": hashlib.sha256(content).hexdigest()}
+
+        def create():
+            written = None
+            try:
+                with transaction.atomic():
+                    user = (
+                        get_user_model()
+                        .objects.select_for_update()
+                        .filter(pk=employeeId)
+                        .first()
+                    )
+                    if user is None:
+                        raise DomainError("NOT_FOUND", "Employee not found.", 404)
+                    previous_id = user.signature_id
+                    signature = write_signature_version(user, content)
+                    written = signature.storage_key
+                    user.signature = signature
+                    user.save(update_fields=["signature", "updated_at"])
+                    audit(
+                        request,
+                        "employeeSignatureReplaced",
+                        user.pk,
+                        previousSignatureId=previous_id,
+                        signatureId=signature.pk,
+                    )
+                    return success(
+                        request,
+                        {
+                            "id": signature.pk,
+                            "employeeId": user.pk,
+                            "createdAt": iso(signature.created_at),
+                        },
+                        201,
+                    )
+            except Exception:
+                if written:
+                    from apps.programs.uploads import private_path
+
+                    private_path(written).unlink(missing_ok=True)
+                raise
+
+        return idempotent(request, payload, create)
