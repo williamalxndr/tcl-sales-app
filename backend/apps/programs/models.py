@@ -3,6 +3,12 @@ from uuid import uuid4
 from django.conf import settings
 from django.db import models
 
+from .policy import CANCELLABLE_STATUSES
+
+
+def default_cancellation_states():
+    return list(CANCELLABLE_STATUSES)
+
 STAGES = [
     ("checker", "Checker"),
     ("acknowledgement", "Mengetahui"),
@@ -86,7 +92,7 @@ class WorkflowPolicy(models.Model):
         choices=[("sequential", "Sequential"), ("parallelAll", "Parallel/all")],
     )
     rejection_ends_submission = models.BooleanField(null=True)
-    cancellation_states = models.JSONField(default=list)
+    cancellation_states = models.JSONField(default=default_cancellation_states)
     require_signature = models.BooleanField(null=True)
     allow_self_approval = models.BooleanField(null=True)
     require_type_and_cost = models.BooleanField(null=True)

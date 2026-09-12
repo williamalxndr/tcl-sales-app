@@ -65,9 +65,9 @@ For controlled automation, the command can read `SALES_EMPLOYEE_PASSWORD` from i
 
 ## Workflow configuration still awaiting answers
 
-Sequential approvals, rejection ending the program and provisioned image snapshots are already configured. Cancellation source states remain empty. `/cancel` returns `409 WORKFLOW_POLICY_UNRESOLVED` until the user chooses allowed states. Do not enable cancellation merely to make a test/demo succeed.
+Sequential approvals, rejection ending the program, provisioned image snapshots, and proposer cancellation before a terminal decision are configured. `/cancel` is allowed from `draft`, `pendingChecker`, `pendingAcknowledgement`, and `pendingApproval`; a nonblank reason is required.
 
-After business confirmation, use `configure_workflow --cancellation-states` followed by the approved states from `draft`, `pendingChecker`, `pendingAcknowledgement`, `pendingApproval`, `approved`. The provisional action contract requires a nonblank reason and preserves history/files while voiding outstanding tasks. Rejected/cancelled programs cannot be reopened through this command.
+`configure_workflow` applies the approved cancellation states by default. `--cancellation-states` remains available for an explicit future policy change. The action preserves history/files while voiding outstanding tasks; terminal programs cannot be cancelled through this command.
 
 Type/cost requiredness is nullable/unresolved. Complete type and IDR cost can be submitted now. Missing values block submit with a policy issue until `configure_workflow --require-type-and-cost yes` or `no` is explicitly selected. Reviewer limits default to the mockup’s two Mengetahui and three Menyetujui; self/cross-stage duplicate approvals and delegation are not enabled. Existing submitted policy snapshots are not rewritten by configuration changes; cancellation checks the current explicitly authorized source-state allowlist.
 

@@ -344,16 +344,7 @@ class ProgramAPITests(TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn("SIGNATURE_REQUIRED", str(response.data))
 
-    def test_cancellation_is_gated_and_proposer_only(self):
-        data = self.submit(self.create())
-        url = "/api/v1/program-submissions/" + data["id"] + "/cancel"
-        response = self.client.post(
-            url,
-            {"reason": "Execution changed"},
-            format="json",
-            **self.headers(data["version"]),
-        )
-        self.assertEqual(response.status_code, 409, response.data)
+    def test_cancellation_is_enabled_for_in_progress_submissions_and_owner_only(self):
         self.policy.cancellation_states = [
             "draft",
             "pendingChecker",
@@ -361,6 +352,8 @@ class ProgramAPITests(TestCase):
             "pendingApproval",
         ]
         self.policy.save()
+        data = self.submit(self.create())
+        url = "/api/v1/program-submissions/" + data["id"] + "/cancel"
         self.assertEqual(
             self.client_for(self.outsider)
             .post(url, {"reason": "No"}, format="json", **self.headers(data["version"]))

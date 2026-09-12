@@ -3,6 +3,7 @@ from django.db import transaction
 
 from apps.core.models import AuditLog
 from apps.programs.models import WorkflowPolicy
+from apps.programs.policy import CANCELLABLE_STATUSES
 
 
 class Command(BaseCommand):
@@ -30,8 +31,11 @@ class Command(BaseCommand):
             obj.within_stage_mode = "sequential"
             obj.rejection_ends_submission = True
             obj.require_signature = True
-            if options["cancellation_states"] is not None:
-                obj.cancellation_states = options["cancellation_states"]
+            obj.cancellation_states = (
+                options["cancellation_states"]
+                if options["cancellation_states"] is not None
+                else list(CANCELLABLE_STATUSES)
+            )
             if options["require_type_and_cost"] is not None:
                 obj.require_type_and_cost = options["require_type_and_cost"] == "yes"
             obj.save()
@@ -42,5 +46,5 @@ class Command(BaseCommand):
                 details={"cancellationStates": obj.cancellation_states},
             )
         self.stdout.write(
-            "Confirmed workflow configured. Unanswered cancellation/field rules retain their existing values."
+            "Confirmed workflow configured with approved cancellation states."
         )
