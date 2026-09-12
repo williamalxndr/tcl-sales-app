@@ -114,3 +114,7 @@ audit event.
 The API renders PDFs in memory and does not create a spool. As defense in depth,
 `python manage.py purge_pdf_spool` reports stale `.pdf` files under the private
 `pdf-spool/` directory; `--confirm` removes only files older than 24 hours.
+
+`python manage.py purge_audit_logs` reports audit rows older than seven years;
+run it with `--confirm` to delete one bounded batch and write a new retention
+summary event.
