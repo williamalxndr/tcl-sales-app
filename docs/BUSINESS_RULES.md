@@ -46,3 +46,12 @@ review and must not rewrite historical submission snapshots.
   not carry over.
 - The new draft receives a new program number and takes a fresh policy, identity,
   routing, and signature snapshot when it is submitted.
+
+## Administrative review reassignment
+
+- A superadmin may reassign only `waiting` or `ready` tasks; completed and
+  voided decisions are immutable.
+- The replacement follows the same active-role, eligibility, self-approval, and
+  duplicate-assignment rules as delegation.
+- Reassignment keeps the task stage and readiness state, increments the parent
+  version, and records both assignees in the audit log.

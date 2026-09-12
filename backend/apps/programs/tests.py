@@ -426,6 +426,37 @@ class ProgramAPITests(TestCase):
         )
         self.assertEqual(duplicate.status_code, 409)
 
+    def test_superadmin_reassigns_an_undecided_task_with_audit(self):
+        replacement = self.employee("replacement-ack", "acknowledger")
+        ReviewerEligibility.objects.create(
+            employee=self.owner,
+            reviewer=replacement,
+            stage="acknowledgement",
+        )
+        data = self.submit(self.create())
+        task = ReviewTask.objects.get(
+            program_id=data["id"], reviewer=self.ack2
+        )
+        admin = self.employee("superadmin", "backofficeAdmin")
+        admin.is_superuser = True
+        admin.is_staff = True
+        admin.save()
+        response = self.client_for(admin).post(
+            f"/api/v1/admin/program-submissions/{data['id']}"
+            f"/review-tasks/{task.pk}/reassign",
+            {"reviewerId": replacement.pk},
+            format="json",
+            **self.headers(data["version"]),
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        task.refresh_from_db()
+        self.assertEqual(task.reviewer_id, replacement.pk)
+        log = AuditLog.objects.get(
+            event="reviewTaskReassigned", resource_id=data["id"]
+        )
+        self.assertEqual(log.details["previousReviewerId"], self.ack2.pk)
+        self.assertEqual(log.details["reviewerId"], replacement.pk)
+
     def pdf_bytes(self):
         output = io.BytesIO()
         document = canvas.Canvas(output)

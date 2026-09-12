@@ -705,3 +705,60 @@ def delegate_task(request, program, task_id, reviewer_id):
         reviewerId=reviewer.pk,
         version=program.version,
     )
+
+
+def reassign_task(request, program, task_id, reviewer_id):
+    task = program.review_tasks.filter(pk=task_id).first()
+    if task is None:
+        raise DomainError("NOT_FOUND", "Review task not found.", 404)
+    if task.status not in ["waiting", "ready"]:
+        raise DomainError(
+            "TASK_NOT_REASSIGNABLE", "Only an undecided task can be reassigned."
+        )
+    required_role = ROLE_FOR_STAGE[task.stage]
+    reviewer = (
+        get_user_model()
+        .objects.filter(
+            pk=reviewer_id, is_active=True, role_grants__role=required_role
+        )
+        .first()
+    )
+    if reviewer is None or reviewer.pk == task.reviewer_id:
+        raise DomainError(
+            "VALIDATION_FAILED",
+            "Replacement must be another active employee with the required role.",
+            422,
+        )
+    if reviewer.pk == program.owner_id and program.policy_snapshot.get(
+        "allowSelfApproval"
+    ) is not True:
+        raise DomainError("FORBIDDEN", "Self-approval is not authorized.", 403)
+    if task.stage != "checker" and not ReviewerEligibility.objects.filter(
+        employee_id=program.owner_id,
+        reviewer=reviewer,
+        stage=task.stage,
+    ).exists():
+        raise DomainError(
+            "VALIDATION_FAILED", "Replacement is not eligible for this employee.", 422
+        )
+    if program.review_tasks.exclude(pk=task.pk).filter(reviewer=reviewer).exists():
+        raise DomainError(
+            "VALIDATION_FAILED",
+            "The replacement already has a task in this submission.",
+            422,
+        )
+    previous_id = task.reviewer_id
+    task.reviewer = reviewer
+    task.reviewer_snapshot = person(reviewer)
+    task.save(update_fields=["reviewer", "reviewer_snapshot"])
+    program.version += 1
+    program.save(update_fields=["version", "updated_at"])
+    audit(
+        request,
+        "reviewTaskReassigned",
+        program.pk,
+        taskId=task.pk,
+        previousReviewerId=previous_id,
+        reviewerId=reviewer.pk,
+        version=program.version,
+    )

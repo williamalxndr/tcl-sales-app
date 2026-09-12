@@ -9,7 +9,7 @@ from apps.core.serializers import StrictSerializer
 from apps.core.services import DomainError, audit, idempotent, rate_limit, version_match
 
 from . import services as svc
-from .models import ProgramType, ReviewerEligibility, ReviewTask
+from .models import Program, ProgramType, ReviewerEligibility, ReviewTask
 from .selectors import (
     check_query,
     filter_programs,
@@ -300,6 +300,27 @@ class DelegateReviewTaskView(AuthenticatedView):
             program = get_program(request.user, submissionId, "visible", lock=True)
             version_match(request, program)
             svc.delegate_task(
+                request, program, taskId, form.validated_data["reviewerId"]
+            )
+            return program_response(request, program)
+
+        return idempotent(request, request.data, change)
+
+
+class ReassignReviewTaskView(AuthenticatedView):
+    def post(self, request, submissionId, taskId):
+        if not request.user.is_superuser:
+            raise DomainError("FORBIDDEN", "Superadmin access is required.", 403)
+        check_query(request, [])
+        form = ReviewerAssignmentSerializer(data=request.data)
+        form.is_valid(raise_exception=True)
+        if not Program.objects.filter(pk=submissionId).exists():
+            raise DomainError("NOT_FOUND", "Submission not found.", 404)
+
+        def change():
+            program = Program.objects.select_for_update().get(pk=submissionId)
+            version_match(request, program)
+            svc.reassign_task(
                 request, program, taskId, form.validated_data["reviewerId"]
             )
             return program_response(request, program)
