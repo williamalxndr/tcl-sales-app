@@ -58,6 +58,40 @@ class EmployeeCreateSerializer(StrictSerializer):
         return attrs
 
 
+class EmployeeUpdateSerializer(StrictSerializer):
+    email = serializers.EmailField(max_length=254, required=False)
+    fullName = serializers.CharField(max_length=150, required=False)
+    employeeNumber = serializers.CharField(max_length=50, required=False)
+    jobTitle = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    timeZone = serializers.CharField(max_length=64, required=False)
+    isActive = serializers.BooleanField(required=False)
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+        query = get_user_model().objects.filter(email=value)
+        if self.instance is not None:
+            query = query.exclude(pk=self.instance.pk)
+        if query.exists():
+            raise serializers.ValidationError("An employee with this email exists.")
+        return value
+
+    def validate_employeeNumber(self, value):
+        value = value.strip()
+        query = get_user_model().objects.filter(employee_number=value)
+        if self.instance is not None:
+            query = query.exclude(pk=self.instance.pk)
+        if query.exists():
+            raise serializers.ValidationError(
+                "An employee with this employee number exists."
+            )
+        return value
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError("At least one field is required.")
+        return attrs
+
+
 def profile(user):
     return {
         "id": user.pk,

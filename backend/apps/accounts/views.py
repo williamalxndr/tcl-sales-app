@@ -15,6 +15,7 @@ from apps.core.services import DomainError, audit, digest, idempotent, rate_limi
 from .models import AuthSession, RefreshCredential
 from .serializers import (
     EmployeeCreateSerializer,
+    EmployeeUpdateSerializer,
     LoginSerializer,
     RefreshSerializer,
     profile,
@@ -246,3 +247,45 @@ class SuperadminEmployeesView(APIView):
                 return response
 
         return idempotent(request, request.data, create)
+
+
+class SuperadminEmployeeView(SuperadminEmployeesView):
+    def patch(self, request, employeeId):
+        if request.query_params:
+            raise DomainError("BAD_REQUEST", "Query parameters are not accepted.", 400)
+        with transaction.atomic():
+            user = (
+                get_user_model().objects.select_for_update().filter(pk=employeeId).first()
+            )
+            if user is None:
+                raise DomainError("NOT_FOUND", "Employee not found.", 404)
+            form = EmployeeUpdateSerializer(user, data=request.data, partial=True)
+            form.is_valid(raise_exception=True)
+            if user.pk == request.user.pk and form.validated_data.get("isActive") is False:
+                raise DomainError(
+                    "SELF_LOCKOUT_FORBIDDEN",
+                    "A superadmin cannot disable their own account.",
+                    409,
+                )
+            mapping = {
+                "email": "email",
+                "fullName": "full_name",
+                "employeeNumber": "employee_number",
+                "jobTitle": "job_title",
+                "timeZone": "time_zone",
+                "isActive": "is_active",
+            }
+            for source, target in mapping.items():
+                if source in form.validated_data:
+                    value = form.validated_data[source]
+                    if isinstance(value, str):
+                        value = value.strip()
+                    setattr(user, target, value)
+            user.save()
+            audit(
+                request,
+                "employeeProfileUpdated",
+                user.pk,
+                fields=sorted(form.validated_data),
+            )
+        return success(request, profile(user))

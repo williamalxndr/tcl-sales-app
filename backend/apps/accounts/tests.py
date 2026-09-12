@@ -237,3 +237,35 @@ class SuperadminEmployeeAPITests(TestCase):
             HTTP_IDEMPOTENCY_KEY="create-employee-0002",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_superadmin_updates_employee_profile_without_role_fields(self):
+        employee = get_user_model().objects.create_user(
+            "old@example.test", employee_number="EMP-300", full_name="Old Name"
+        )
+        response = self.client.patch(
+            "/api/v1/admin/employees/" + employee.pk,
+            {
+                "email": "updated@example.test",
+                "fullName": "Updated Name",
+                "jobTitle": "Area Manager",
+                "isActive": False,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        employee.refresh_from_db()
+        self.assertEqual(employee.full_name, "Updated Name")
+        self.assertEqual(employee.job_title, "Area Manager")
+        self.assertFalse(employee.is_active)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                event="employeeProfileUpdated", resource_id=employee.pk
+            ).exists()
+        )
+
+        forbidden = self.client.patch(
+            "/api/v1/admin/employees/" + employee.pk,
+            {"roles": ["approver"]},
+            format="json",
+        )
+        self.assertEqual(forbidden.status_code, 400)

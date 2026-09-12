@@ -13,6 +13,10 @@ urlpatterns = [
     path("api/v1/auth/logout", accounts.LogoutView.as_view()),
     path("api/v1/users/me", accounts.ProfileView.as_view()),
     path("api/v1/admin/employees", accounts.SuperadminEmployeesView.as_view()),
+    path(
+        "api/v1/admin/employees/<str:employeeId>",
+        accounts.SuperadminEmployeeView.as_view(),
+    ),
     path("api/v1/master-data/locations", programs.LocationsView.as_view()),
     path("api/v1/master-data/program-types", programs.ProgramTypesView.as_view()),
     path("api/v1/program-submissions", programs.OwnProgramsView.as_view()),
