@@ -99,4 +99,14 @@ The validator checks OpenAPI 3.1, JSON request/response examples, Markdown parit
 
 ## Operational boundaries
 
-Production still needs TLS, a production server, trusted proxy/rate handling, secrets, media/database backups and recovery tests, monitoring, least-privilege runtime database users, approved retention/aggregate upload quotas and deliberate credential cleanup. Rate buckets, idempotency records, session token history and audit rows are persisted; no automatic destructive purge has been introduced before retention is selected. Raw signature assets and storage keys are never API resources. Dashboard metrics, recovery, signature replacement UI, account management and review reassignment remain deferred.
+Production still needs TLS, a production server, trusted proxy/rate handling,
+secrets, media/database backups and recovery tests, monitoring, least-privilege
+runtime database users, aggregate upload quotas, and deliberate credential
+cleanup. Rate buckets, idempotency records, session token history, and audit rows
+are persisted. Raw signature assets and storage keys are never API resources.
+
+Retention commands are dry-run by default. Schedule the confirmed operation only
+after reviewing its count, for example `python manage.py purge_attachments`
+followed by `python manage.py purge_attachments --confirm`. Each confirmed run is
+bounded to 500 records unless `--batch-size` is supplied and records a summary
+audit event.
